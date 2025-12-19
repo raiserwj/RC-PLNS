@@ -1,0 +1,69 @@
+PackSolution temp_solution=solution;
+
+    Instance instance = Instance();
+    mlpalns::PALNS<Instance,PackSolution> palns_solver(instance, temp_solution);
+
+    auto repair = Repair();
+    palns_solver.add_repair_method(repair,"repair");
+
+    //3类不同规模的重组
+    auto regroup00 = DestroyReconstruct(100, 0.1,10);
+    auto regroup01 = DestroyReconstruct(100, 0.05,7);
+    auto regroup02 = DestroyReconstruct(100, 0.033,4);
+    auto regroup10 = DestroyReconstruct(101, 0.1,10);
+    auto regroup11 = DestroyReconstruct(101, 0.05,7);
+    auto regroup12 = DestroyReconstruct(101, 0.033,4);
+    vector<DestroyReconstruct> regroups = {regroup00, regroup01, regroup02, regroup10, regroup11, regroup12};
+    palns_solver.add_destroy_method(regroup00,"regroup back big");
+    palns_solver.add_destroy_method(regroup01,"regroup back medium");
+    palns_solver.add_destroy_method(regroup02,"regroup back small");
+    palns_solver.add_destroy_method(regroup10,"regroup normal big");
+    palns_solver.add_destroy_method(regroup11,"regroup normal medium");
+    palns_solver.add_destroy_method(regroup12,"regroup normal small");
+
+    //2类平均面积重组
+    auto insertAverage0 = DestroyInsertAverage(200);
+    auto insertAverage1 = DestroyInsertAverage(201);
+    auto insertAverage2 = DestroyInsertAverage(202);
+    auto insertAverage3 = DestroyInsertAverage(203);
+    vector<DestroyInsertAverage> inserts = {insertAverage0, insertAverage1, insertAverage2, insertAverage3};
+    palns_solver.add_destroy_method(insertAverage0,"insert back average last");
+    palns_solver.add_destroy_method(insertAverage1,"insert back average two");
+    palns_solver.add_destroy_method(insertAverage2,"insert normal average last");
+    palns_solver.add_destroy_method(insertAverage3,"insert normal average two");
+
+    //1类根据unity rate1的插入
+    auto insertFill0 = DestroyInsertFill(302);
+    auto insertFill1 = DestroyInsertFill(305);
+    vector<DestroyInsertFill> insert_fills = {insertFill0, insertFill1};
+    palns_solver.add_destroy_method(insertFill0,"insert fill back");
+    palns_solver.add_destroy_method(insertFill1,"insert fill normal");
+
+    //1类根据unity rate2的重组
+    auto regroup20 = DestroyReconstruct2(400);
+    auto regroup21 = DestroyReconstruct2(401);
+    vector<DestroyReconstruct2> regroup2 = {regroup20, regroup21};
+    palns_solver.add_destroy_method(regroup20,"regroup rate2 back");
+    palns_solver.add_destroy_method(regroup21,"regroup rate2 normal");
+
+    //1类填充面积最小两个重组
+    auto regroup_last = DestroyReconstruct2(402);
+    palns_solver.add_destroy_method(regroup_last,"regroup last fill");
+
+    //2类普通板插入正反面板
+    auto backinsert0 = DestroyBack(500);
+    auto backinsert1 = DestroyBack(501);
+    vector<DestroyBack> backs = {backinsert0, backinsert1};
+    palns_solver.add_destroy_method(backinsert0,"back insert 0");
+    palns_solver.add_destroy_method(backinsert1,"back insert 1");
+
+    std::unique_ptr<mlpalns::AlgorithmVisitor<PackSolution>> visitor = std::make_unique<PackVisitor>();
+    palns_solver.set_algorithm_visitor(visitor);
+
+    unique_ptr<AcceptanceCriterion<PackSolution>> hill_climbing; // = std::make_unique<TspHillClimbing>();
+    palns_solver.set_acceptance_criterion(hill_climbing);
+
+    mlpalns::Parameters palns_framework_params;
+    palns_framework_params = mlpalns::Parameters("../param.json");
+    PackSolution ret_solution = palns_solver.go(temp_solution, 1u, palns_framework_params);
+    std::cout<<ret_solution.getunity()<<std::endl;
