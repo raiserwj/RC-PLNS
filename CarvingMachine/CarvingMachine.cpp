@@ -376,7 +376,7 @@ void amopt_pack::CarvingMachine::firstpack() {
 //    f<<"partsnum"<<backparts.size()+notbackparts.size() <<std::endl;
 //    f.close();
 //    gettimeofday(&start, NULL);
-//    combination();
+    combination();
 //    gettimeofday(&end, NULL);
 //    std::cout<<"time="<<(end.tv_sec - start.tv_sec)<<std::endl;
 //    exit(0);
@@ -1427,3 +1427,4 @@ float amopt_pack::CarvingMachine::calfit_(std::vector<float> population){
     return fit;
 
 }
+
