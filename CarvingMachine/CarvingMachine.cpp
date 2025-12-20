@@ -746,7 +746,7 @@ void amopt_pack::CarvingMachine::optimize() {
 //        break;
         bool normal;
         float back_ratio =
-                (solution.bins_back.size() / 3) / (0.0 + solution.bins_back.size() + solution.bins_normal.size());
+                (solution.bins_back.size())*solution.bins_back.size()  / (0.0 + solution.bins_back.size() + solution.bins_normal.size())/ (0.0 + solution.bins_back.size() + solution.bins_normal.size());
         if (dt(mt) < back_ratio) normal = false;
         else normal = true;
         double t = static_cast<double>(end.tv_sec - start.tv_sec); // seconds
@@ -770,7 +770,7 @@ void amopt_pack::CarvingMachine::optimize() {
         if (step % 300 == 0) {
             move(regroup_last, repair, mt, tem,numr);
         }
-        if (false || step % 500 == 149) {
+        if (false || step % 20 == 19) {
             (dt(mt) < 0.5) ? index = 0 : index = 1;
             move(backs[index], repair, mt, tem,others);
         }
@@ -1425,4 +1425,5 @@ float amopt_pack::CarvingMachine::calfit_(std::vector<float> population){
     }
 
     return fit;
+
 }
