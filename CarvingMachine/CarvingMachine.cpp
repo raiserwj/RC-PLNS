@@ -675,8 +675,8 @@ void amopt_pack::CarvingMachine::optimize() {
     mt.seed(std::time(0u));
 //    mt.seed(3);
     std::uniform_real_distribution<float> dt(0, 1);
-    double frac_1 = 0.15, frac_2 = 0.05, frac_3 = 0.03;
-//    double frac_1 = 0.15, frac_2 = 0.10, frac_3 = 0.05;
+    // double frac_1 = 0.15, frac_2 = 0.05, frac_3 = 0.03;
+   double frac_1 = 0.15, frac_2 = 0.10, frac_3 = 0.05;
 
     int num1 = 7, num2 = 5, num3 = 3 ;
 
@@ -1427,4 +1427,5 @@ float amopt_pack::CarvingMachine::calfit_(std::vector<float> population){
     return fit;
 
 }
+
 
