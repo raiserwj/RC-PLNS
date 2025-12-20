@@ -20,7 +20,3 @@ We release the **final per-run objective results** used in the **Kruskal–Walli
   3. **Lines 721–1080:** `BRKGA+BSSF`
 
 These values can be directly loaded to reproduce the KW test and subsequent post hoc comparisons (e.g., Dunn test with Holm correction), as reported in the manuscript.
-
-## Contact
-
-For questions regarding the released data format or statistical testing, please contact the corresponding author.
