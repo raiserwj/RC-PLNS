@@ -100,7 +100,7 @@ void nfpc(string filename){
     vector<vector<vector<vector<vector<vector<vector<float>>>>>>> nfp={};
     for(int dataset=0;dataset<datasets.size();dataset++){
         nfp.push_back({});
-//        if(dataset!=07){
+//        if(dataset!=10){
 //            continue;
 //        }
         for(int i=0;i<datasets[dataset].size();i++){
@@ -282,11 +282,11 @@ void calnfp(string filename)
         cerr << "无法打开 nfp.txt 进行写入" << endl;
     }
 }
-static void Run07Parallel(const string& file, int baseSeed = 21) {
+static void Run10Parallel(const string& file, int baseSeed = 21) {
     std::vector<pid_t> pids;
-    pids.reserve(07);
+    pids.reserve(10);
 
-    for (int i = 0; i < 07; ++i) {
+    for (int i = 0; i < 10; ++i) {
         const int seed = baseSeed + i;
         pid_t pid = fork();
 
@@ -321,50 +321,80 @@ static void Run07Parallel(const string& file, int baseSeed = 21) {
     }
 }
 int main() {
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//E0级实木颗粒板LM-1933-零度浮雕_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//E0级颗粒板E0级暖白色_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//E1级中纤板双面贴灰色三胺（森荣3131-J1123浅灰）_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//E1级防潮板双面贴黑色XJ-951绒麻面三聚氰胺_16.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//多层板G6063-311_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//多层板双白胶板_19.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//多层板安科纳胡桃_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//实木多层板暖白麻面_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//实木颗粒板珊瑚灰木纹_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//实木颗粒板箭羽棕_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//暖白多层_18.json");
-//    }
-//    for(int i=0;i<3;i++) {
-//        Run07Parallel("test//进口杉木实芯板和信白_18.json");
-//    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//E0级实木颗粒板LM-1933-零度浮雕_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//E0级颗粒板E0级暖白色_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//E1级中纤板双面贴灰色三胺（森荣3131-J1123浅灰）_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//E1级防潮板双面贴黑色XJ-951绒麻面三聚氰胺_16.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//多层板G6063-311_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//多层板双白胶板_19.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//多层板安科纳胡桃_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//实木多层板暖白麻面_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//实木颗粒板珊瑚灰木纹_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//实木颗粒板箭羽棕_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//暖白多层_18.json");
+    }
+    for(int i=0;i<3;i++) {
+        Run10Parallel("test//进口杉木实芯板和信白_18.json");
+    }
 
 //    int status = 0;
 //    Json::Value result_list;
-    
+//    vector<string> files = {
+//            "2bp//class_10_03.json"
+//           // , "tests//18颗粒板香居木.json"
+//            ,"2bp//class_10_13.json"
+//            ,"2bp//class_10_23.json"
+//            ,"2bp//class_10_33.json","2bp//class_10_43.json"，
+//            "2bp//class_10_53.json"
+//            "2bp//class_10_63.json",
+//            ,"2bp//class_10_73.json"
+//            ,"2bp//class_10_83.json"
+//            ,"2bp//class_10_93.json"
+//    };
+//    pid_t pid;
+//    string file;
+//    for (vector<string>::iterator it = files.begin(); it != files.end(); ++it) {
+//        file = *it;
+//        pid = fork();
+//        if (pid == 0 || pid == -1) {
+//            break;
+//        }
+//    }
+//    if (pid == -1) {
+//        cout << "fail to fork!" << endl;
+//        exit(1);
+//    } else if (pid == 0) {
+//        Test(file,0);
+//        sleep(10);
+//        exit(0);
+//    } else {
+//        cout << "this is main process,id=" << getpid() << ",end to process " << file << endl;
+//        int status = 0;
+//        wait(&status);
+//        exit(0);
+//    }
 //
-//   for(int i=0; i<1;i++){
-//       Test("2bp//class_07_13.json",21+i);
-//   }
 //    for(int i=0; i<1;i++){
 //    Test("test//E0级颗粒板E0级暖白色_18.json",21+i);
 //}
@@ -377,25 +407,25 @@ int main() {
 //    for(int i=0; i<1;i++){
 //        Test("test//多层板G6063-311_18.json",21+i);
 //    }
-//    for(int i=0; i<07;i++){
+//    for(int i=0; i<10;i++){
 //        Test("test//多层板双白胶板_19.json",21+i);
 //    }
-//    for(int i=0; i<07;i++){
+//    for(int i=0; i<10;i++){
 //        Test("test//多层板安科纳胡桃_18.json",21+i);
 //    }
-//    for(int i=0; i<07;i++){
+//    for(int i=0; i<10;i++){
 //        Test("test//实木多层板暖白麻面_18.json",21+i);
 //    }
-//    for(int i=0; i<07;i++){
+//    for(int i=0; i<10;i++){
 //        Test("test//实木颗粒板珊瑚灰木纹_18.json",21+i);
 //     }
-//     for(int i=0; i<07;i++){
+//     for(int i=0; i<10;i++){
 //         Test("test//实木颗粒板箭羽棕_18.json",21+i);
 //     }
-//    for(int i=0; i<07;i++){
+//    for(int i=0; i<10;i++){
 //        Test("test//暖白多层_18.json",21+i);
 //    }
-//    for(int i=0; i<07;i++){
+//    for(int i=0; i<10;i++){
 //        Test("test//进口杉木实芯板和信白_18.json",21+i);
 //    }
 //    for(int i=0; i<1;i++){
