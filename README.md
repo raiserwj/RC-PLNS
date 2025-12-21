@@ -47,7 +47,7 @@ In `carvingmachine.cpp`:
 ### 3.3 Control Time Limits in the Packing Module
 In `carvingmachine.cpp`:
 - **Line 475**: controls the time limit for the **priority stage** in the `packing` module.
-- **Lines 690**: control the time limits for the **ordinary stage** in the `packing` module.
+- **Line 687**: control the time limits for the **ordinary stage** in the `packing` module.
 
 ### 3.4 Enable the Reproduced BRKGA Algorithm
 In `amopt_pack.cpp`:
