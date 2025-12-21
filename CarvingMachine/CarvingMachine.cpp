@@ -99,7 +99,7 @@ Error amopt_pack::CarvingMachine::Input(string str) {
         part_->Input(y_max - y_min,
                      x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
                      false,
-                     false, root_group["items"][i]["smallItem"].asBool(), rotate_degree, type);
+                     false, true, rotate_degree, type);
 //            part_->Input(y_max - y_min,
 //                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
 //                     false,
@@ -472,11 +472,19 @@ void amopt_pack::CarvingMachine::firstpack() {
         gettimeofday(&start, NULL);
         int num=0;
         int index=0;
+        float timelimit=60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size());
         while(true) {
 //            PackSolution temp_solution = solution;
-            if (num < 10000) destroy0 = DestroyReconstruct(100, 0.15, 7);
-            else if (num < 20000) destroy0 = DestroyReconstruct(100, 0.10, 5);
-            else destroy0 = DestroyReconstruct(100, 0.05, 3);
+            gettimeofday(&end, NULL);
+            double t = static_cast<double>(end.tv_sec - start.tv_sec);
+            float frac_=-t/timelimit*0.10+0.15;
+            if(t>timelimit/2){
+                frac_=0;
+            }
+
+            if (num < 10000) destroy0 = DestroyReconstruct(100, frac_, 7);
+            else if (num < 20000) destroy0 = DestroyReconstruct(100, frac_, 5);
+            else destroy0 = DestroyReconstruct(100, frac_, 3);
             if(num%10==0){
                 destroy1.destroy_solution(solution, mt);
                 repair.repair_solution(solution, mt);
@@ -549,7 +557,7 @@ void amopt_pack::CarvingMachine::firstpack() {
                 fitlist.push_back({K,0});
                 index=index+1;
             }
-            if (end.tv_sec - start.tv_sec > (60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size()))) break;
+            if (end.tv_sec - start.tv_sec > (timelimit)) break;
         }
 //        std::cout << solution.getareasum() << "  " << solution.getunity() << std::endl;
         solution = best_solution;
@@ -678,7 +686,8 @@ void amopt_pack::CarvingMachine::optimize() {
     double frac_1 = 0.15, frac_2 = 0.10, frac_3 = 0.05;
 
     int num1 = 7, num2 = 5, num3 = 3 ;
-
+//    float timelimit=300-300 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size());
+    float timelimit=60;
     auto repair = Repair();
     //3类不同规模的重组
     auto regroup00 = DestroyReconstruct(100, frac_1, num1);
@@ -749,15 +758,18 @@ void amopt_pack::CarvingMachine::optimize() {
         if (dt(mt) < back_ratio) normal = false;
         else normal = true;
         double t = static_cast<double>(end.tv_sec - start.tv_sec); // seconds
-
-        int index = 0;
-        if (t < 20.0) index = 0;
-        else if (t < 40.0) index = 1;
-        else index = 2;
-//        if (step < 10000) index = 0;
-//        else if (step < 20000) index = 1;
-//        else index = 2;
-        move(regroups[normal * 3 + index], repair, mt, tem,numr); //rate3
+        float frac_=-t/timelimit*0.10+0.15;
+        if(t>timelimit/2){
+            frac_=0;
+        }
+        auto regroupbins1=DestroyReconstruct(101, frac_, 3);
+        auto regroupbins0 = DestroyReconstruct(100, frac_, 3);
+        if (normal == true){
+            move(regroupbins1, repair, mt, tem,numr);
+        }
+        else{
+            move(regroupbins0, repair, mt, tem,numr);
+        }
         if (step % 10 == 0) {
             (dt(mt) < 0.5) ? index = 0 : index = 1;
             move(inserts[normal * 2 + index], repair, mt, tem,numi);
@@ -776,7 +788,7 @@ void amopt_pack::CarvingMachine::optimize() {
         if (step % 300 == 299) {
             move(regroup_last, repair, mt, tem,numr);
         }
-        if (step % 20 == 0) {
+        if (step % 500 == 0) {
 //            std::cout << step << "  " << tem << "  " << solution.getunity()
 //                      << "  " << solution.bins_back.size() << std::endl;
             if (bestSolution.getcost() != last_cost) {
@@ -810,7 +822,7 @@ void amopt_pack::CarvingMachine::optimize() {
             fitlist.push_back({K,K_});
             index_=index_+1;
         }
-        if (end.tv_sec - start.tv_sec > (60-60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size()))) {
+        if (end.tv_sec - start.tv_sec > (timelimit)) {
             fstream f;
             f.open("result.txt",ios::out|ios::app);
             f<<"numr="<<numr<<std::endl;
@@ -826,8 +838,8 @@ void amopt_pack::CarvingMachine::optimize() {
             current_time=(end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec);
             current_num=solution.bins_normal.size();
         }
-        if (end.tv_sec - start.tv_sec > (60-60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size()))) break;//终点到0.05
-        tem = 0.1 * exp(-(end.tv_sec - start.tv_sec + 0.0) / (60-60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size())) * 2);
+        if (end.tv_sec - start.tv_sec > timelimit) break;//终点到0.05
+        tem = 0.1 * exp(-(end.tv_sec - start.tv_sec + 0.0) / (timelimit) * 2);
 //        tem = 0.07 * (1-(end.tv_sec - start.tv_sec + 0.0) / (60-60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size()))) ;
 
     }
@@ -835,7 +847,7 @@ void amopt_pack::CarvingMachine::optimize() {
     std::cout << "bin number:" << bin_num << std::endl;
     fstream f;
     f.open("record_.txt",ios::out|ios::app);
-//    f<<solution.getunity()<<std::endl;
+    f<<solution.getunity()<<std::endl;
     f.close();
 }
 
