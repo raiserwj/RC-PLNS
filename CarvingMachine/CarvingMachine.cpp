@@ -98,8 +98,8 @@ Error amopt_pack::CarvingMachine::Input(string str) {
         Part_Ptr part_(new amopt_pack::Part());
         part_->Input(y_max - y_min,
                      x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
-                     root_group["items"][i]["BackFrontPriority"].asBool() ,
-                     root_group["items"][i]["smallItem"].asBool(), rotate_bool, rotate_degree, type);
+                     false,
+                     false, root_group["items"][i]["smallItem"].asBool(), rotate_degree, type);
 //            part_->Input(y_max - y_min,
 //                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
 //                     false,
@@ -376,7 +376,7 @@ void amopt_pack::CarvingMachine::firstpack() {
 //    f<<"partsnum"<<backparts.size()+notbackparts.size() <<std::endl;
 //    f.close();
 //    gettimeofday(&start, NULL);
-    combination();
+//    combination();
 //    gettimeofday(&end, NULL);
 //    std::cout<<"time="<<(end.tv_sec - start.tv_sec)<<std::endl;
 //    exit(0);
@@ -675,8 +675,7 @@ void amopt_pack::CarvingMachine::optimize() {
     mt.seed(std::time(0u));
 //    mt.seed(3);
     std::uniform_real_distribution<float> dt(0, 1);
-    // double frac_1 = 0.15, frac_2 = 0.05, frac_3 = 0.03;
-   double frac_1 = 0.15, frac_2 = 0.10, frac_3 = 0.05;
+    double frac_1 = 0.15, frac_2 = 0.10, frac_3 = 0.05;
 
     int num1 = 7, num2 = 5, num3 = 3 ;
 
@@ -746,7 +745,7 @@ void amopt_pack::CarvingMachine::optimize() {
 //        break;
         bool normal;
         float back_ratio =
-                (solution.bins_back.size())*solution.bins_back.size()  / (0.0 + solution.bins_back.size() + solution.bins_normal.size())/ (0.0 + solution.bins_back.size() + solution.bins_normal.size());
+                (solution.bins_back.size() )* solution.bins_back.size()/ (0.0 + solution.bins_back.size() + solution.bins_normal.size())/(0.0 + solution.bins_back.size() + solution.bins_normal.size());
         if (dt(mt) < back_ratio) normal = false;
         else normal = true;
         double t = static_cast<double>(end.tv_sec - start.tv_sec); // seconds
@@ -777,7 +776,7 @@ void amopt_pack::CarvingMachine::optimize() {
         if (step % 300 == 299) {
             move(regroup_last, repair, mt, tem,numr);
         }
-        if (step % 500 == 0) {
+        if (step % 20 == 0) {
 //            std::cout << step << "  " << tem << "  " << solution.getunity()
 //                      << "  " << solution.bins_back.size() << std::endl;
             if (bestSolution.getcost() != last_cost) {
@@ -1425,7 +1424,4 @@ float amopt_pack::CarvingMachine::calfit_(std::vector<float> population){
     }
 
     return fit;
-
 }
-
-
