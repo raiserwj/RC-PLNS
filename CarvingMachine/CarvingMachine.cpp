@@ -84,7 +84,7 @@ Error amopt_pack::CarvingMachine::Input(string str) {
                         break;
                     }
                 }
-                rotate_bool = false;
+                rotate_bool = true;
                 rotate_degree = root_group["items"][i]["rotate"][j].asInt();
                 break;
             }
@@ -99,7 +99,7 @@ Error amopt_pack::CarvingMachine::Input(string str) {
         part_->Input(y_max - y_min,
                      x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
                      false,
-                     false, true, rotate_degree, type);
+                     false, false, rotate_degree, type);
 //            part_->Input(y_max - y_min,
 //                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
 //                     false,
@@ -478,9 +478,6 @@ void amopt_pack::CarvingMachine::firstpack() {
             gettimeofday(&end, NULL);
             double t = static_cast<double>(end.tv_sec - start.tv_sec);
             float frac_=-t/timelimit*0.10+0.15;
-            if(t>timelimit/2){
-                frac_=0;
-            }
 
             if (num < 10000) destroy0 = DestroyReconstruct(100, frac_, 7);
             else if (num < 20000) destroy0 = DestroyReconstruct(100, frac_, 5);
@@ -759,9 +756,6 @@ void amopt_pack::CarvingMachine::optimize() {
         else normal = true;
         double t = static_cast<double>(end.tv_sec - start.tv_sec); // seconds
         float frac_=-t/timelimit*0.10+0.15;
-        if(t>timelimit/2){
-            frac_=0;
-        }
         auto regroupbins1=DestroyReconstruct(101, frac_, 3);
         auto regroupbins0 = DestroyReconstruct(100, frac_, 3);
         if (normal == true){
