@@ -1,0 +1,9 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="200mm" height="200mm" viewBox="-250 -250 500 500" style="background-color:white" version="1.1"
+xmlns="http://www.w3.org/2000/svg"
+xmlns:xlink="http://www.w3.org/1999/xlink">
+<g fill-rule="evenodd"><path d="M 50,91.3043 L 66.4402,100 L 84.7826,73.6413 L 84.7826,26.3587 L 66.4402,2.66454e-15 L 33.6277,2.66454e-15 L 15.2174,26.3587 L 15.2174,73.6413 L 33.6277,100 L 50,100 L 39.0625,91.3043 L 28.2609,70.788 L 28.2609,29.212 L 39.0625,8.69565 L 60.9375,8.69565 L 71.7391,29.212 L 71.7391,70.788 L 60.9375,91.3043 L 50,91.3043 z " style="fill-opacity:0.5;fill:rgb(153,204,0);stroke:rgb(153,204,0);stroke-width:0"/></g>
+<polygon points="45.5842,200 93.4103,200 93.4103,191.304 76.019,191.304 76.019,100 66.4402,100 41.2364,117.391 41.2364,127.921 62.9755,112.976 62.9755,191.304 45.5842,191.304 45.5842,200" style="fill-opacity:0.5;fill:rgb(204,153,0);stroke:rgb(153,204,0);stroke-width:0"/>
+</svg>
