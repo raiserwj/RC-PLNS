@@ -77,7 +77,7 @@ namespace amopt {
                                                         (*temp_bins)[index]->backornot, (*temp_bins)[index]->parts));
                             destroy_bins[index] = temp_bin;
                         }
-                        Part_Ptr_V parts_ret = insert(destroy_bins[index], parts[i], mt, false, true, solution.ratio < 70);
+                        Part_Ptr_V parts_ret = insert(destroy_bins[index], parts[i], mt, false, true, solution.ratio < 0.7);
                         remain_parts.insert(remain_parts.end(), parts_ret.begin(), parts_ret.end());
                     }
 
@@ -86,7 +86,7 @@ namespace amopt {
                                 new amopt_pack::Bin(destroy_bin->width, destroy_bin->height, destroy_bin->backornot,
                                                     remain_parts));
                         bool flag;
-                        Bin_Ptr_V return_bin = regroup({temp_bin}, &flag, mt, true, solution.junyun, solution.ratio < 70);
+                        Bin_Ptr_V return_bin = regroup({temp_bin}, &flag, mt, true, solution.junyun, solution.ratio < 0.7);
                         if (flag) {
                             std::map<int, Bin_Ptr>::iterator it;
                             for (it = destroy_bins.begin(); it != destroy_bins.end(); ++it) {

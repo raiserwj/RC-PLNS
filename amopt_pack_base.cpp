@@ -4,6 +4,3 @@
 
 #include "amopt_pack_base.h"
 
-amopt::amopt_pack::Configure::Configure() {
-
-}
