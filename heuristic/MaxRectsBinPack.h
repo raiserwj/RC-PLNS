@@ -35,8 +35,7 @@ namespace rbp {
             RectBestAreaFit, ///< -BAF: Positions the rectangle into the smallest free rect into which it fits.
             RectwidthRule,
             RectheightRule,///< -BL: Does the Tetris placement.
-            RectContactPointRule,
-            RectDFTRC///< -CP: Choosest the placement where the rectangle touches other rects as much as possible.
+            RectContactPointRule ///< -CP: Choosest the placement where the rectangle touches other rects as much as possible.
         };
 
         /// Inserts the given list of rectangles in an offline/batch mode, possibly rotated.
@@ -96,8 +95,6 @@ namespace rbp {
                                                double &bestShortSideFit) const;
 
         Rect FindPositionForNewNodeContactPoint(double width, double height, double &contactScore) const;
-
-        Rect FindPositionForNewNodeDFTRC(double width, double height, double &bestScore) const;
 
         /// @return True if the free node was split.
         bool SplitFreeNode(Rect freeNode, const Rect &usedNode);

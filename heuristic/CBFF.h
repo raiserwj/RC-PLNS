@@ -31,8 +31,6 @@ void last_insert(vector<Bin_Ptr> bins, int index, std::mt19937 &mt);
 
 vector<Part_Ptr_V> maxRects(Part_Ptr_V parts, float width, float height, int binNum, std::mt19937 &mt, float *score1, float *score2, bool junyun);
 
-vector<Part_Ptr_V> maxRectBRKGA(Part_Ptr_V parts, float width, float height,  std::mt19937 &mt);
-
 vector<Part_Ptr_V> maxRectsSorts(Part_Ptr_V parts, float width, float height, int binNum, std::mt19937 &mt, float *score1, float *score2);
 
 #endif //PACKING_SOLUTION_CBFF_H

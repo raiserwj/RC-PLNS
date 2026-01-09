@@ -126,10 +126,11 @@ inline void rotate_polygons_(vector<vector<vector<float>>> &polygons, int angle)
 }
 
 
-inline vector<vector<float>> group_two_(vector<vector<vector<float>>> A, vector<vector<float>> B, vector<int> rotateA, vector<int> rotateB, float width, float height, long int &totaltime) {
+inline vector<vector<float>> group_two_(vector<vector<vector<float>>> A, vector<vector<float>> B, vector<int> rotateA, vector<int> rotateB, float width, float height) {
     vector<vector<float>> bestret;
-    float bestReward = 0;
+    float bestReward = 10;
     nfpClass nfpC;
+
 //    for (int i = 0; i < rotateA.size(); i++) {
 //        for (int j = 0; j < rotateB.size(); j++) {
 //
@@ -143,7 +144,7 @@ inline vector<vector<float>> group_two_(vector<vector<vector<float>>> A, vector<
                 a.push_back(rotate_polygon(A[k], rotateA[i], 0, 0));
             }
             vector<vector<float>> b = rotate_polygon(B, rotateB[j], 0, 0);
-            vector<vector<float>> ret = nfpC.nfpCalculate_(a, b, width, height,totaltime);
+            vector<vector<float>> ret = nfpC.nfpCalculate_(a, b, width, height);
             if (ret.size() != 0 && ret[0][0] > bestReward) {
                 bestReward = ret[0][0];
                 bestret.clear();

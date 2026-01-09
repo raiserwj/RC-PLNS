@@ -9,10 +9,11 @@
 #include <utility>
 #include <iostream>
 #include <limits>
+
 #include <cassert>
 #include <cstring>
 #include <cmath>
-#include <chrono>
+
 #include "MaxRectsBinPack.h"
 
 namespace rbp {
@@ -49,11 +50,7 @@ namespace rbp {
     Rect MaxRectsBinPack::Insert(double width, double height, int Flip,
                                  FreeRectChoiceHeuristic method) {
         Rect newNode;
-        using namespace std::chrono;
-
-        auto t0 = steady_clock::now();
         // Unused in this function. We don't need to know the score after finding the position.
-        // ... 要计时的代码 ...
         double score1 = std::numeric_limits<double>::max();
         double score2 = std::numeric_limits<double>::max();
         switch (method) {
@@ -78,17 +75,7 @@ namespace rbp {
             case RectBestAreaFit:
                 newNode = FindPositionForNewNodeBestAreaFit(width, height, score1, score2);
                 break;
-            case RectDFTRC:
-                newNode = FindPositionForNewNodeDFTRC(width, height, score1);
-                break;
         }
-        auto t1 = steady_clock::now();
-
-        // 毫秒
-        double ms1 = duration<double, std::milli>(t1 - t0).count();
-        // 或者用双精度毫秒
-
-//        std::cout << ms1 << " ms\n";
         if (newNode.height == 0)
             return newNode;
 
@@ -103,14 +90,6 @@ namespace rbp {
 
         PruneFreeList();
         usedRectangles.push_back(newNode);
-        auto t2 = steady_clock::now();
-
-        // 毫秒
-        double ms2 = duration<double, std::milli>(t2 - t0).count();
-        // 或者用双精度毫秒
-
-//        std::cout << ms2 << " ms\n";
-
         return newNode;
     }
 
@@ -140,9 +119,6 @@ namespace rbp {
                 break;
             case RectBestAreaFit:
                 newNode = FindPositionForNewNodeBestAreaFit(width, height, score1, score2);
-                break;
-            case RectDFTRC:
-                newNode = FindPositionForNewNodeDFTRC(width, height, score1);
                 break;
         }
 
@@ -504,36 +480,7 @@ namespace rbp {
         }
         return bestNode;
     }
-    Rect MaxRectsBinPack::FindPositionForNewNodeDFTRC(double width, double height,
-                                                      double &bestScore) const
-    {
-        Rect bestNode{};
-        std::memset(&bestNode, 0, sizeof(Rect));
 
-        // 评分初始化为 -inf，寻找“最大”评分
-        bestScore = std::numeric_limits<double>::max();
-
-        for (size_t i = 0; i < freeRectangles.size(); ++i) {
-            const Rect& fr = freeRectangles[i];
-
-            // 尝试不旋转
-            if (fr.width >= width && fr.height >= height) {
-                // 在 MaxRects 中，候选落点取该空矩形的左下角 (fr.x, fr.y)
-                double score = -(2440-freeRectangles[i].x-width)*(2440-freeRectangles[i].x-width)-(1220-freeRectangles[i].y-height)*(1220-freeRectangles[i].y-height);
-                if (score < bestScore
-                    || (score == bestScore && (fr.y < bestNode.y || (fr.y == bestNode.y && fr.x < bestNode.x)))) {
-                    bestNode.x = fr.x;
-                    bestNode.y = fr.y;
-                    bestNode.width  = width;
-                    bestNode.height = height;
-                    bestScore = score;
-                }
-            }
-
-            // 尝试旋
-        }
-        return bestNode;
-    }
     bool MaxRectsBinPack::SplitFreeNode(Rect freeNode, const Rect &usedNode) {
         // Test with SAT if the rectangles even intersect.
         if (usedNode.x >= freeNode.x + freeNode.width || usedNode.x + usedNode.width <= freeNode.x ||

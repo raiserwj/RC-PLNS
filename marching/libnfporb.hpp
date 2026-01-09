@@ -22,7 +22,6 @@
 #include "marching/algo/slide.hpp"
 #include "vector"
 #include <iomanip>
-#include <sys/time.h>
 
 using namespace std;
 namespace libnfporb {
@@ -336,12 +335,11 @@ public:
         return poly;
     }
 
-    vector<vector<float>> nfpCalculate_(vector<vector<vector<float>>> A, vector<vector<float>> B, float width, float height,long int &totaltime) {
+    vector<vector<float>> nfpCalculate_(vector<vector<vector<float>>> A, vector<vector<float>> B, float width, float height) {
         vector<vector<float>> ret;
         vector<libnfporb::polygon_t> a;
         vector<vector<float>> boundingboxA;
         libnfporb::polygon_t b;
-
         float minxB = 100000, maxxB = -100000, minyB = 100000, maxyB = -100000;
         float minxA = 100000, maxxA = -100000, minyA = 100000, maxyA = -100000;
         for (int i = 0; i < A.size(); i++) {
@@ -395,10 +393,6 @@ public:
             }
             collection = tempCollection;
         }
-        struct timeval start;
-        struct timeval end;
-        gettimeofday(&start, NULL);
-
         vector<float> bestLocation;
         float bestReward = 10, bestDistance = 1000000;
         for (auto polygon: collection) {
@@ -444,11 +438,6 @@ public:
                 }
             }
         }
-        gettimeofday(&end, NULL);
-    totaltime=totaltime+(end.tv_usec - start.tv_usec);
-        if((end.tv_usec - start.tv_usec)<0){
-            totaltime=totaltime+1000000;
-        }
         return ret;
     }
     vector<vector<float>> nfpbetweentwo(vector<vector<vector<float>>> A, vector<vector<float>> B, float width, float height) {
@@ -474,7 +463,7 @@ public:
             if (maxxATemp > maxxA) maxxA = maxxATemp;
             if (minyATemp < minyA) minyA = minyATemp;
             if (maxyATemp > maxyA) maxyA = maxyATemp;
-            boost::geometry::simplify(tempA, tempASimple, 10);
+            boost::geometry::simplify(tempA, tempASimple, 0);
             a.push_back(tempASimple);
         }
         for (int i = 0; i < B.size(); i++) {
@@ -488,7 +477,7 @@ public:
 
         float origArea = (maxxA - minxA) * (maxyA - minyA) + (maxxB - minxB) * (maxyB - minyB);
         libnfporb::polygon_t b_simple;
-        boost::geometry::simplify(b, b_simple, 10);
+        boost::geometry::simplify(b, b_simple, 0);
         float bSimpleX = b_simple.outer()[0].x_.val() ;
         float bSimpleY = b_simple.outer()[0].y_.val() ;
         minxB = minxB - bSimpleX;
@@ -510,8 +499,8 @@ public:
             collection = tempCollection;
             for(int i=0;i<nfp[0].size();i++)
             {
-                int x=nfp[0][i].x_.val()-10000-B[0][0];
-                int y=nfp[0][i].y_.val()-10000-B[0][1];
+                float x=nfp[0][i].x_.val()-10000.0-B[0][0];
+                float y=nfp[0][i].y_.val()-10000.0-B[0][1];
                 ret.push_back({x,y});
             }
         }

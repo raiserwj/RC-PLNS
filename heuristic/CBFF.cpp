@@ -3,7 +3,7 @@
 #include <boost/geometry/geometries/point_xy.hpp>
 #include <boost/geometry/multi/geometries/multi_point.hpp>
 #include <boost/geometry/geometries/polygon.hpp>
-#include <chrono>
+
 using std::numeric_limits;
 using std::max;
 using std::min;
@@ -41,7 +41,6 @@ vector<Part_Ptr_V> maxRects(Part_Ptr_V parts, float width, float height, int bin
                     bestRectIndex = i1;
                 }
             }
-
             if (bestRectIndex != -1) {
                 Part_Ptr current_part = parts[bestRectIndex];
                 detailpack[i].Insert(current_part->width, current_part->height, current_part->rotate,
@@ -125,69 +124,6 @@ vector<Part_Ptr_V> maxRects(Part_Ptr_V parts, float width, float height, int bin
     ret.push_back(parts);
     return ret;
 }
-vector<Part_Ptr_V> maxRectBRKGA(Part_Ptr_V parts, float width, float height,  std::mt19937 &mt) {
-
-    vector<Part_Ptr_V> ret;
-    vector<rbp::MaxRectsBinPack> detailpack = {};
-    int bestRectIndex = -1;
-    double bestScore1 = numeric_limits<double>::max();
-    bool big_flag = true;
-    int big_length = 0;
-    while (parts.size() > 0) {
-        bestScore1 = numeric_limits<double>::max();
-        vector<int> indexs;
-        double score1;
-        Part_Ptr current_part = parts[0];
-        for (int j = 0; j < big_length; j++) {
-            score1 = detailpack[j].Insertscore(current_part->width, current_part->height, current_part->rotate,
-                                               detailpack[0].RectBestShortSideFit);
-            if (score1 < bestScore1) {
-                bestScore1 = score1;
-                indexs.clear();
-                indexs.push_back({j});
-            } else if (score1 == bestScore1 && score1 != numeric_limits<double>::max()){
-                indexs.clear();
-                indexs.push_back({j});}
-        }
-        if (bestScore1 == numeric_limits<double>::max()) {
-                big_length += 1;
-                detailpack.push_back(MaxRectsBinPack());
-                detailpack.back().Init(width, height);
-                ret.push_back(Part_Ptr_V());
-                bestScore1 = numeric_limits<double>::max();
-                bestRectIndex = -1;
-                    Part_Ptr current_part = parts[0];
-                    if (big_flag && current_part->smallitem) {
-                        continue;
-                    }
-                    double score1;
-                    score1 = detailpack.back().Insertscore(current_part->width, current_part->height,
-                                                           current_part->rotate,
-                                                           detailpack.back().RectBestShortSideFit);
-                    if (score1 < bestScore1) {
-                        bestScore1 = score1;
-                    }
-                if (bestRectIndex != -1) {
-                    detailpack.back().Insert(parts[bestRectIndex]->width, parts[bestRectIndex]->height,
-                                             parts[bestRectIndex]->rotate,
-                                             detailpack.back().RectBestShortSideFit);
-                    ret.back().push_back(parts[bestRectIndex]);
-                    parts.erase(parts.begin() + bestRectIndex);
-                }
-        } else {
-            std::uniform_int_distribution<> dis(0, indexs.size() - 1);
-            int bestIndex = dis(mt);
-            int bestBinIndex_ = indexs[bestIndex];
-
-            Part_Ptr current_part = parts[0];
-            detailpack[bestBinIndex_].Insert(current_part->width, current_part->height, current_part->rotate,
-                                             rbp::MaxRectsBinPack::RectBestShortSideFit);
-            ret[bestBinIndex_].push_back(current_part);
-            parts.erase(parts.begin());
-        }
-    }
-    return ret;
-}
 
 bool cmpArea(Part_Ptr a, Part_Ptr b) {
     return a->size > b->size;
@@ -210,9 +146,6 @@ vector<Part_Ptr_V> maxRectsSorts(Part_Ptr_V parts, float width, float height, in
     float bestScore1 = 10000000000, bestScore2 = 10000000000;
 
     for (int i = 0; i < 6; i++) {
-        using namespace std::chrono;
-
-        auto t0 = steady_clock::now();
         //面积，周长，长边，短边，随机1，随机2
         switch (i) {
             case 0:
@@ -231,13 +164,7 @@ vector<Part_Ptr_V> maxRectsSorts(Part_Ptr_V parts, float width, float height, in
                 std::shuffle(parts.begin(), parts.end(), mt);
                 break;
         }
-        auto t1 = steady_clock::now();
 
-        // 毫秒
-        double ms = duration<double, std::milli>(t1 - t0).count();
-        // 或者用双精度毫秒
-
-//        std::cout << ms << " ms\n";
         vector<rbp::MaxRectsBinPack> detailpack = {};
         vector<Part_Ptr_V> tempRet;
         detailpack.push_back(MaxRectsBinPack());
@@ -281,13 +208,6 @@ vector<Part_Ptr_V> maxRectsSorts(Part_Ptr_V parts, float width, float height, in
             Part_Ptr_V tempParts(parts.begin() + j, parts.end());
             bestBinRet.push_back(tempParts);
         }
-        auto t2 = steady_clock::now();
-
-        // 毫秒
-        double ms2 = duration<double, std::milli>(t2 - t0).count();
-        // 或者用双精度毫秒
-
-//        std::cout << ms2 << " ms\n";
     }
     *score1 = bestScore1;
     *score2 = bestScore2;
@@ -303,7 +223,6 @@ Part_Ptr_V insert(Bin_Ptr bin, Part_Ptr part, std::mt19937 &mt, bool initial_fla
     float score1MaxRects, score1Sort, score2MaxRects, score2Sort;
     vector<Part_Ptr_V> retMaxRects = maxRects(parts, bin->width, bin->height, 1, mt, &score1MaxRects, &score2MaxRects, false);
     vector<Part_Ptr_V> retSort;
-
     if (sort) {
         retSort = maxRectsSorts(parts, bin->width, bin->height, 1, mt, &score1Sort, &score2Sort);
     } else {

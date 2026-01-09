@@ -13,11 +13,9 @@
 #include "iso646.h"
 #include "algorithm_error.h"
 #include "heuristic/Rect.h"
-#include "algorithm_error.h"
-#include "heuristic/Rect.h"
+#include "heuristic/polygons.h"
 #include <memory>
 #include "map"
-
 using std::string;
 using std::shared_ptr;
 using std::vector;
@@ -41,6 +39,7 @@ namespace amopt {
             double height;
             double width;
             string id1;
+            int id2;
             int type;
 
             vector <vector<float>> points;
@@ -65,7 +64,11 @@ namespace amopt {
                 width = width_;
                 size = width_ * height_;
                 area = area_;
-                points = points_;
+                points={};
+                for(int i=0;i<points_.size();i++){
+                    vector<float> point=points_[i];
+                    points.push_back(point);
+                }
                 pointsCombine = {points_};
                 boundingBox = boundingBox_;
                 rotate_degrees = rotate_degrees_;
@@ -114,7 +117,91 @@ namespace amopt {
             bool big_part;
             double unity;
             double fitness;
+            double overlap;
+            vector<vector<vector<vector<vector<vector<float>>>>>> nfp;//(0,0)to(0,0)
 
+            void updatenfp(vector<int> partsindex,vector<vector<vector<vector<vector<vector<float>>>>>> nfp_){
+//                nfp={};
+//                int flag1=0,flag2=0;
+//                int n=nfp_.size();
+//                int i=0;
+//                while(flag1<n){
+//                    if(std::find(partsindex.begin(),partsindex.end(),flag1)!=partsindex.end())
+//                    {
+//                        flag2=0;
+//                        nfp.push_back({});
+//                        while(flag2<n){
+//                            if(std::find(partsindex.begin(),partsindex.end(),flag2)!=partsindex.end()){
+//                                nfp[i].push_back(nfp_[flag1][flag2]);
+//                            }
+//                            flag2++;
+//                        }
+//                        i++;
+//                    }
+//                    flag1++;
+//                }
+                nfp=nfp_;
+            }
+            double caloverlap(){
+                overlap=0;
+                for(int i=0;i<parts.size();i++){
+                    for(int j=0;j<parts.size();j++){
+                        if(i==j){
+                            continue;
+                        }
+                        else{
+                            vector<vector<float>> nfp_={};
+                            for(int k=0;k<nfp[parts[i]->id2][parts[j]->id2][parts[i]->rotate_degree][parts[j]->rotate_degree].size();k++){
+                                nfp_.push_back(nfp[parts[i]->id2][parts[j]->id2][parts[i]->rotate_degree][parts[j]->rotate_degree][k]);
+                            }
+                            for(int k=0;k<nfp_.size();k++){
+                                nfp_[k][0]+=parts[j]->points[0][0];
+                                nfp_[k][1]+=parts[j]->points[0][1];
+                            }
+                            if(pointInPolygon(nfp_,parts[i]->points[0])){
+                                overlap+=Distance(nfp_,parts[i]->points[0])*Distance(nfp_,parts[i]->points[0]);
+                            }
+                        }
+                    }
+                    float x_max=0;
+                    for(int j=0;j<parts[i]->points.size();j++){
+                        if(parts[i]->points[j][0]>x_max){
+                            x_max=parts[i]->points[j][0];
+                        }
+                    }
+                    if(x_max>width){
+                        overlap+=(x_max-width)*(x_max-width);
+                    }
+                    float y_max=0;
+                    for(int j=0;j<parts[i]->points.size();j++){
+                        if(parts[i]->points[j][1]>y_max){
+                            y_max=parts[i]->points[j][1];
+                        }
+                    }
+                    if(y_max>height){
+                        overlap+=(y_max-height)*(y_max-height);
+                    }
+                    float x_min=0;
+                    for(int j=0;j<parts[i]->points.size();j++){
+                        if(parts[i]->points[j][0]<x_min){
+                            x_min=parts[i]->points[j][0];
+                        }
+                    }
+                    if(x_min<0){
+                        overlap+=(x_min)*(x_min);
+                    }
+                    float y_min=0;
+                    for(int j=0;j<parts[i]->points.size();j++){
+                        if(parts[i]->points[j][1]<y_min){
+                            y_min=parts[i]->points[j][1];
+                        }
+                    }
+                    if(y_min<0){
+                        overlap+=(y_min)*(y_min);
+                    }
+                }
+                return overlap;
+            }
             Bin(double width_, double height_, bool backornot_) {
                 width = width_;
                 height = height_;
@@ -137,7 +224,10 @@ namespace amopt {
             void update_area_sum() {
                 fillarea = 0;
                 for (int i = 0; i < parts.size(); i++) {
-                    fillarea += parts[i]->size;
+                    fillarea += parts[i]->area;
+                }
+                if (fillarea==0){
+                    return;
                 }
                 averagearea = fillarea / parts.size();
                 unity = fillarea / size;
@@ -148,15 +238,6 @@ namespace amopt {
                     }
                 }
                 fitness = (backornot ? 2 : 1) * (4 * unity * unity - 10) + 3 * (big_part ? 1 : 0);
-//                fitness = (backornot ? 2 : 1) * (4 * unity * unity - 50) + 3 * ((not parts[0]->smallitem) ? 1 : 0);
-            }
-            double get_squarearea() {
-                fillarea = 0;
-                for (int i = 0; i < parts.size(); i++) {
-                    fillarea += parts[i]->size;
-                }
-                unity = fillarea / size;
-                return unity * unity ;
 //                fitness = (backornot ? 2 : 1) * (4 * unity * unity - 50) + 3 * ((not parts[0]->smallitem) ? 1 : 0);
             }
 
@@ -258,8 +339,10 @@ namespace amopt {
 
     }
 }
+
 typedef vector<shared_ptr<amopt_pack::Bin>> Bin_Ptr_V;
 typedef vector<shared_ptr<amopt_pack::Part>> Part_Ptr_V;
 typedef shared_ptr<amopt_pack::Bin> Bin_Ptr;
 typedef shared_ptr<amopt_pack::Part> Part_Ptr;
+
 #endif //PACKING_SOLUTION_AMOPT_PACK_BASE_H

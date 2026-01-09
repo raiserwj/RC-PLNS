@@ -38,9 +38,6 @@ namespace amopt {
             struct timeval start;
             struct timeval end;
             std::mt19937 mt;
-            std::vector<vector<double>> fitlist;
-            int numr;
-            int numi;
         public:
             CarvingMachine();
 
@@ -51,7 +48,6 @@ namespace amopt {
             );
 
             Error compute(Json::Value &result_list);
-            Error computeBRKGA(Json::Value &result_list);
 
             void numitems() {
                 std::cout << "normal parts:" << squareparts.size() << "\n" << "abnormalparts:" << notsquareparts.size()
@@ -66,21 +62,12 @@ namespace amopt {
             void firstpack();
 
             void optimize();
-            void optimizeBRKGA();
 
             void
             move(mlpalns::DestroyMethod<PackSolution> &destroy, mlpalns::RepairMethod<PackSolution> &repair,
-                 std::mt19937 &mt,float tem,int &num);
+                 std::mt19937 &mt,float tem);
 
             void output(Json::Value &result_list);
-            std::vector<std::vector<float>> initial(int p, int num);
-            std::vector<float> Decode(std::vector<std::vector<float>> &population);
-            float Decode_(std::vector<std::vector<float>> population);
-            std::vector<std::vector<float>> Selectpe(int pe, std::vector<std::vector<float>> population);
-            std::vector<std::vector<float>> CrossOver(std::vector<std::vector<float>> populatione, std::vector<std::vector<float>> population, int p_, float rou);
-            std::vector<std::vector<float>> Mutiation(int pm, int num);
-            float calfit(std::vector<float> population);
-            float calfit_(std::vector<float> population);
         };
     }
 }

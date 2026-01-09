@@ -77,7 +77,7 @@ namespace amopt {
                                                         (*temp_bins)[index]->backornot, (*temp_bins)[index]->parts));
                             destroy_bins[index] = temp_bin;
                         }
-                        Part_Ptr_V parts_ret = insert(destroy_bins[index], parts[i], mt, false, true, solution.ratio < 0.7);
+                        Part_Ptr_V parts_ret = insert(destroy_bins[index], parts[i], mt, false, true, solution.ratio < 70);
                         remain_parts.insert(remain_parts.end(), parts_ret.begin(), parts_ret.end());
                     }
 
@@ -86,7 +86,7 @@ namespace amopt {
                                 new amopt_pack::Bin(destroy_bin->width, destroy_bin->height, destroy_bin->backornot,
                                                     remain_parts));
                         bool flag;
-                        Bin_Ptr_V return_bin = regroup({temp_bin}, &flag, mt, true, solution.junyun, solution.ratio < 0.7);
+                        Bin_Ptr_V return_bin = regroup({temp_bin}, &flag, mt, true, solution.junyun, solution.ratio < 70);
                         if (flag) {
                             std::map<int, Bin_Ptr>::iterator it;
                             for (it = destroy_bins.begin(); it != destroy_bins.end(); ++it) {
@@ -124,103 +124,16 @@ namespace amopt {
                         map<int, Bin_Ptr> destroy_bins;
 
                         for (int i = 0; i < parts.size(); i++) {
-                            int index ;
-                            const int n = static_cast<int>((*temp_bins).size());
-                            std::vector<int> idx(n);
-                            std::iota(idx.begin(), idx.end(), 0);
-                            Part_Ptr_V parts_ret;
-                            if (n > 10) {
-                                std::shuffle(idx.begin(), idx.end(), mt);
-                                idx.resize(10);
+                            std::uniform_int_distribution<int> dt(0, (*temp_bins).size() - 1);
+                            int index = dt(mt);
+                            if (destroy_bins.find(index) == destroy_bins.end()) {
+                                Bin_Ptr temp_bin(
+                                        new amopt_pack::Bin((*temp_bins)[index]->width, (*temp_bins)[index]->height,
+                                                            (*temp_bins)[index]->backornot, (*temp_bins)[index]->parts));
+                                destroy_bins[index] = temp_bin;
                             }
-                            for(int k=0;k<idx.size();k++){
-                                bool success=false;
-                                index=idx[k];
-                                if (destroy_bins.find(index) == destroy_bins.end()) {
-                                    Part_Ptr_V base_parts;
-                                    base_parts.reserve((*temp_bins)[index]->parts.size());
-                                    for (auto &p : (*temp_bins)[index]->parts) {
-                                        if (p != parts[i]) base_parts.push_back(p);  // 关键：过滤同地址 Part
-                                    }
-
-                                    Bin_Ptr temp_bin(new amopt_pack::Bin((*temp_bins)[index]->width,
-                                                                         (*temp_bins)[index]->height,
-                                                                         (*temp_bins)[index]->backornot,
-                                                                         base_parts));
-                                    destroy_bins[index] = temp_bin;
-                                }
-                                parts_ret = insert(destroy_bins[index], parts[i], mt, true, true, solution.ratio < 70);
-                                double bestarea=0;
-                                for (int j=0;j<parts_ret.size();j++){
-                                    bestarea+=parts_ret[j]->area;
-                                }
-                                if(bestarea<1){
-                                    success=true;
-                                    break;
-                                }
-                                float score1MaxRects=9999;
-                                float score2MaxRects=9999;
-                                int successnum=0;
-                                int setarea=0;
-                                std::vector<int> successset={};
-                                for (int j=0;j<destroy_bins[index]->parts.size();j++){
-                                    if(destroy_bins[index]->parts[j]->area<bestarea && destroy_bins[index]->parts[j]->backfrontpriority==false){
-                                        setarea+=destroy_bins[index]->parts[j]->area;
-                                        successset.push_back(j);
-                                        successnum+=1;
-                                        Part_Ptr_V base_parts;
-                                        base_parts.reserve((destroy_bins)[index]->parts.size());
-                                        for (auto &p : (destroy_bins)[index]->parts) {
-                                            if (p != parts[i]) base_parts.push_back(p);  // 关键：过滤同地址 Part
-                                        }
-                                        Bin_Ptr temp_bin(new amopt_pack::Bin(destroy_bins[index]->width,
-                                                                             destroy_bins[index]->height,
-                                                                             destroy_bins[index]->backornot,
-                                                                             base_parts));
-                                        temp_bin->parts.erase(temp_bin->parts.begin() + j);
-                                        temp_bin->parts.push_back(parts[i]);
-                                        vector<Part_Ptr_V> retMaxRects = maxRects(temp_bin->parts, temp_bin->width, temp_bin->height, 1, mt, &score1MaxRects, &score2MaxRects, false);
-                                        if (score1MaxRects==0){
-                                            success=true;
-                                            parts_ret={destroy_bins[index]->parts[j]};
-                                            destroy_bins[index]->parts=retMaxRects[0];
-                                            break;
-                                        }
-                                    }
-                                    if(successnum==2){
-                                        successnum+=1;
-                                        if(setarea<bestarea){
-                                            Part_Ptr_V base_parts;
-                                            base_parts.reserve((destroy_bins)[index]->parts.size());
-                                            for (auto &p : (destroy_bins)[index]->parts) {
-                                                if (p != parts[i]) base_parts.push_back(p);  // 关键：过滤同地址 Part
-                                            }
-                                            Bin_Ptr temp_bin(new amopt_pack::Bin(destroy_bins[index]->width,
-                                                                                 destroy_bins[index]->height,
-                                                                                 destroy_bins[index]->backornot,
-                                                                                 base_parts));
-                                            temp_bin->parts.erase(temp_bin->parts.begin() + successset[1]);
-                                            temp_bin->parts.erase(temp_bin->parts.begin() + successset[0]);
-                                            temp_bin->parts.push_back(parts[i]);
-                                            vector<Part_Ptr_V> retMaxRects = maxRects(temp_bin->parts, temp_bin->width, temp_bin->height, 1, mt, &score1MaxRects, &score2MaxRects, false);
-                                            if (score1MaxRects==0){
-                                                success=true;
-                                                parts_ret={destroy_bins[index]->parts[successset[1]],destroy_bins[index]->parts[successset[0]]};
-                                                destroy_bins[index]->parts=retMaxRects[0];
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    if (successnum>=3){
-                                        break;
-                                    }
-                                }
-                                if(success){
-                                    break;
-                                }
-                            }
+                            Part_Ptr_V parts_ret = insert(destroy_bins[index], parts[i], mt, true, true, solution.ratio < 70);
                             remain_parts.insert(remain_parts.end(), parts_ret.begin(), parts_ret.end());
-
                         }
 
                         if (remain_parts.size() != 0) {

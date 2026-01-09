@@ -6,7 +6,9 @@
 #include <chrono>
 #include <sys/time.h>
 #include<math.h>
-
+#include <chrono>
+using Clock = std::chrono::steady_clock;
+using microseconds = std::chrono::microseconds;
 amopt_pack::CarvingMachine::CarvingMachine() {
     std::cout << "carving machine initial" << std::endl;
 }
@@ -25,9 +27,6 @@ Error amopt_pack::CarvingMachine::Input(string str) {
 //    rbuilder["collectComments"] = false;
     Json::Value root_group;
     JSONCPP_STRING errs;
-    int partnum=0;
-    numr=0;
-    numi=0;
     if (!reader->parse(str.data(), str.data() + str.size(), &root_group, &errs)) {
         return Error::INPUT_FORMAT_ERROR;
     }
@@ -92,37 +91,29 @@ Error amopt_pack::CarvingMachine::Input(string str) {
         if (feasibleflag == false) {
             continue;
         }
-//        if (root_group["items"][i]["BackFrontPriority"].asBool() == false) {
-//            continue;
-//        }
+        rotate_bool=false;
         Part_Ptr part_(new amopt_pack::Part());
         part_->Input(y_max - y_min,
                      x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
-                     false,
-                     false, false, rotate_degree, type);
+                     root_group["items"][i]["BackFrontPriority"].asBool(),
+                     false, rotate_bool, rotate_degree, type);
 //            part_->Input(y_max - y_min,
 //                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
 //                     false,
-//                         root_group["items"][i]["smallItem"].asBool(), false, 0, type);
+//                         root_group["items"][i]["BackFrontPriority"].asBool(), rotate_bool, rotate_degree, type);
 //        part_->Input(y_max - y_min,
-//                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, {0,90,  180,270},
+//                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, {0, 90, 180, 270},
 //                     root_group["items"][i]["id"].asString(),
 //                     root_group["items"][i]["BackFrontPriority"].asBool(),
-//                     root_group["items"][i]["smallItem"].asBool(), true, 90, type);
+//                     root_group["items"][i]["smallItem"].asBool(), rotate_bool, rotate_degree, type);
         parts.push_back(part_);
         points.clear();
         if (part_->smallitem) {
             num_small += 1;
         }
     }
-    double area=0;
-    for(int i=0;i<parts.size();i++){
-        area=area+parts[i]->area;
-    }
-    std::cout << area << std::endl;
     ratio = (num_small + 0.0) / (parts.size());
     std::cout << ratio << std::endl;
-    std::cout <<"backnum="<< partnum << std::endl;
     solution.ratio = ratio;
 //    if (squareparts.size() != 0) {
 //        ratio = (num_small + 0.0) / (squareparts.size());
@@ -147,11 +138,10 @@ void amopt_pack::CarvingMachine::combination() {
     std::cout << "combine" << std::endl;
     double sumwaste = 0;
     double sumrect = 0;
-    long int totaltime=0;
     for (int i_ = 0; i_ <= 1; i_++) {
         Part_Ptr_V *tempParts = (i_ == 0) ? &backparts : &notbackparts;
         vector<int> usedlist;
-        for (int j_ = 1; j_ <=3; j_++) {
+        for (int j_ = 1; j_ <= 2; j_++) {
 
 
             vector<int> squareIndexs;
@@ -205,6 +195,7 @@ void amopt_pack::CarvingMachine::combination() {
             }
             Graph G(2 * totalSize);
             vector<double> cost;
+
             map<int, vector<vector<float>>> marchingRet;
             for (int i = 0; i < notsquarenum; i++) {
                 int iIndex = notsquareIndexs[i];
@@ -215,7 +206,7 @@ void amopt_pack::CarvingMachine::combination() {
                         Part_Ptr partJ = (*tempParts)[jIndex];
                         vector<vector<float>> ret = group_two_(partI->pointsCombine, partJ->points,
                                                                partI->rotate_degrees, partJ->rotate_degrees,
-                                                               bins[0]->width, bins[0]->height,totaltime);
+                                                               bins[0]->width, bins[0]->height);
                         if (ret.size() > 0 && ret[0][0] > 0) {
                             G.AddEdge(i, j);
                             cost.push_back(-int(ret[0][0]));
@@ -232,7 +223,7 @@ void amopt_pack::CarvingMachine::combination() {
                         Part_Ptr partJ = (*tempParts)[squareIndex];
                         vector<vector<float>> ret = group_two_(partI->pointsCombine, partJ->points,
                                                                partI->rotate_degrees, partJ->rotate_degrees,
-                                                               bins[0]->width, bins[0]->height,totaltime);
+                                                               bins[0]->width, bins[0]->height);
                         if (ret.size() > 0 && ret[0][0] > 0) {
                             G.AddEdge(i, j + notsquarenum);
                             cost.push_back(-int(ret[0][0]));
@@ -249,12 +240,9 @@ void amopt_pack::CarvingMachine::combination() {
                 G.AddEdge(j + notsquarenum, j + notsquarenum + totalSize);
                 cost.push_back(0);
             }
-            gettimeofday(&start, NULL);
             Matching M(G);
             pair<list<int>, double> solution = M.SolveMinimumCostPerfectMatching(cost);
-            gettimeofday(&end, NULL);
-            std::cout<<"caltime="<<(end.tv_usec - start.tv_usec)<<std::endl;
-            std::cout << "reduce" << solution.second /2<< std::endl;
+            std::cout << "reduce" << solution.second << std::endl;
             list<int> matching(solution.first);
             map<int, int> edge;
             for (list<int>::iterator it = matching.begin(); it != matching.end(); it++) {
@@ -270,8 +258,8 @@ void amopt_pack::CarvingMachine::combination() {
                     part_->size = ret[0][1] * ret[0][2];
                     part_->type = j_ + 1;
                     part_->area = 0;
-                    part_->rotate = true;
-                    part_->rotate_degrees = {0,90,180,270};
+                    part_->rotate = false;
+                    part_->rotate_degrees = {0};
 
                     if ((*tempParts)[notsquareIndexs[min_index]]->combineParts.size() == 0) {
                         (*tempParts)[notsquareIndexs[min_index]]->transform.rotation = ret[0][5];
@@ -285,7 +273,7 @@ void amopt_pack::CarvingMachine::combination() {
                     } else {
                         (*tempParts)[notsquareIndexs[min_index]]->type = -1;
                         for (int j = 0; j < (*tempParts)[notsquareIndexs[min_index]]->combineParts.size(); j++) {
-                            (*tempParts)[notsquareIndexs[min_index]]->combineParts[j]->transform.rotation = ret[0][5];
+//                            (*tempParts)[notsquareIndexs[min_index]]->combineParts[j]->transform.rotation = ret[0][5];
                             (*tempParts)[notsquareIndexs[min_index]]->combineParts[j]->transform.xShift = ret[j + 1][0];
                             (*tempParts)[notsquareIndexs[min_index]]->combineParts[j]->transform.yShift = ret[j + 1][1];
                             part_->combineParts.push_back((*tempParts)[notsquareIndexs[min_index]]->combineParts[j]);
@@ -335,20 +323,15 @@ void amopt_pack::CarvingMachine::combination() {
     }
     std::cout << "successnum=" << successnum << std::endl;
     std::cout << "successnum_=" << successnum_ << std::endl;
-    std::cout<<"totaltime="<<totaltime<<std::endl;
 }
 
 Error amopt_pack::CarvingMachine::compute(Json::Value &result_list) {
     std::cout << "compute start" << std::endl;
-        gettimeofday(&start, NULL);
+    auto t_d1_start = Clock::now();
     firstpack();
-        gettimeofday(&end, NULL);
-//    std::cout<<"time="<<(end.tv_usec - start.tv_usec)<<std::endl;
-//    fstream f;
-//    f.open("record_.txt",ios::out|ios::app);
-//    f<<"initial_time="<<end.tv_usec - start.tv_usec<<std::endl;
-//    f.close();
     optimize();
+    auto t_d1_end = Clock::now();
+    std::cout << "Time:         " <<  std::chrono::duration_cast<microseconds>(t_d1_end - t_d1_start).count()   / 1e6 << " s\n";
     output(result_list);
     Json::Value temp;
 //    temp["back_num"] = int(solution.bins_back.size());
@@ -360,7 +343,6 @@ Error amopt_pack::CarvingMachine::compute(Json::Value &result_list) {
 void amopt_pack::CarvingMachine::firstpack() {
     backparts = {};
     notbackparts = {};
-    fitlist={};
     std::vector<std::vector<std::vector<double> > > result_;
     std::vector<amopt_pack::Bin> bins_ = {};
     std::vector<amopt_pack::Part *> parts_ = {};
@@ -371,42 +353,13 @@ void amopt_pack::CarvingMachine::firstpack() {
             notbackparts.push_back(parts[i]);
         }
     }
-//    fstream f;
-//    f.open("result.txt",ios::out|ios::app);
-//    f<<"partsnum"<<backparts.size()+notbackparts.size() <<std::endl;
-//    f.close();
 //    gettimeofday(&start, NULL);
-//    combination();
+    combination();
 //    gettimeofday(&end, NULL);
 //    std::cout<<"time="<<(end.tv_sec - start.tv_sec)<<std::endl;
 //    exit(0);
-    gettimeofday(&start, NULL);
     std::cout << backparts.size() << "  " << notbackparts.size() << std::endl;
-    Json::Value out;
-    out["items"]={};
-    int num=0;
-    for (int i=0;i<backparts.size();i++){
-        if(backparts[i]->type == -1) continue;
-        if(backparts[i]->rotate == false) continue;
-        out["items"][num]["BackFrontPriority"]=true;
-        out["items"][num]["centPt"][0]=backparts[i]->width/2;
-        out["items"][num]["centPt"][1]=backparts[i]->height/2;
-        num=num+1;
-    }
-    std::cout << num << std::endl;
-    for (int i=0;i<notbackparts.size();i++){
-        if(notbackparts[i]->type == -1) continue;
-            out["items"][num]["BackFrontPriority"]=false;
-        out["items"][num]["centPt"][0]=notbackparts[i]->width/2;
-        out["items"][num]["centPt"][1]=notbackparts[i]->height/2;
-        num=num+1;
-    }
-//    ofstream fout;
-//    fout.open("conbined.json");
-//    Json::StyledWriter writer1;
-//    fout << writer1.write(out) << std::endl;
-//    fout.close();
-//    exit(0);
+
     double area_sum = 0;
     for (int i = 0; i < backparts.size(); i++) {
         if (backparts[i]->type == -1) continue;
@@ -446,12 +399,6 @@ void amopt_pack::CarvingMachine::firstpack() {
             solution.bins_back.push_back(p_bin);
         }
     }
-    double K=0;
-    K=0;
-    for(int i=0;i<solution.bins_back.size() ;i++){
-        K=K+solution.bins_back[i]->get_squarearea();
-    }
-    fitlist.push_back({K,0});
     if (backparts.size() != 0) {
         solution.update_area(0);
         auto repair = Repair();
@@ -459,115 +406,38 @@ void amopt_pack::CarvingMachine::firstpack() {
                   << solution.cost << "  " << solution.getunity()
                   << std::endl;
         ofstream fout1;
-//        Json::Value result_list1;
-//        output(result_list1);
-//        fout1.open("output_back_begin.json");
-//        Json::StyledWriter writer1;
-//        fout1 << writer1.write(result_list1) << std::endl;
-//        fout1.close();
+        Json::Value result_list1;
+        output(result_list1);
+        fout1.open("output_back_begin.json");
+        Json::StyledWriter writer1;
+        fout1 << writer1.write(result_list1) << std::endl;
+        fout1.close();
         PackSolution best_solution = solution;
-        auto destroy0 = DestroyReconstruct(100, 0.10, 4);
-        auto destroy1 = DestroyInsertAverage(200);
-        auto destroy2 = DestroyInsertAverage(201);
+        auto destroy0 = DestroyReconstruct(100, 0.1, 7);
         gettimeofday(&start, NULL);
-        int num=0;
-        int index=0;
-        float timelimit=60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size());
         while(true) {
-//            PackSolution temp_solution = solution;
-            gettimeofday(&end, NULL);
-            double t = static_cast<double>(end.tv_sec - start.tv_sec);
-            float frac_=0;
-            frac_=-t/timelimit*0.10+0.15;
-            if (num < 10000) destroy0 = DestroyReconstruct(100, frac_, 7);
-            else if (num < 20000) destroy0 = DestroyReconstruct(100, frac_, 5);
-            else destroy0 = DestroyReconstruct(100, frac_, 3);
-            if(num%10==0){
-                destroy1.destroy_solution(solution, mt);
-                repair.repair_solution(solution, mt);
-                if (solution.getcost() < best_solution.getcost()-0.000001) {
-                    double cost=solution.getcost();
-                    double bestcost=best_solution.getcost();
-                    numi+=1;
-                }
-            }
-            else if(num%10==1){
-                destroy2.destroy_solution(solution, mt);
-                repair.repair_solution(solution, mt);
-                if (solution.getcost() < best_solution.getcost()-0.000001) {
-                    double cost=solution.getcost();
-                    double bestcost=best_solution.getcost();
-                    numi+=1;
-                }
-            }
-            else {
-                destroy0.destroy_solution(solution, mt);
-                repair.repair_solution(solution, mt);
-                if (solution.getcost() < best_solution.getcost()-0.000001) {
-                    double cost=solution.getcost();
-                    double bestcost=best_solution.getcost();
-                    numr += 1;
-                }
-            }
-//            ofstream fout1;
-//            ofstream fout2;
-//            Json::Value result_list1;
-//            Json::Value result_list2;
-//            if ((solution.getcost() - best_solution.getcost())>1) {
-//                std::cout<<solution.getcost()<<","<<best_solution.getcost()<<std::endl;
-//                output(result_list1);
-//                fout1.open("output_1.json");
-//                Json::StyledWriter writer1;
-//                fout1 << writer1.write(result_list1) << std::endl;
-//                fout1.close();
-//                solution = best_solution;
-//                output(result_list2);
-//                fout2.open("output_2.json");
-//                Json::StyledWriter writer2;
-//                fout2 << writer2.write(result_list2) << std::endl;
-//                fout2.close();
-//                exit(0);
-//            }
+            destroy0.destroy_solution(solution, mt);
+            repair.repair_solution(solution, mt);
             if (solution.getcost() < best_solution.getcost()) {
                 best_solution = solution;
             } else {
                 solution = best_solution;
             }
-
             gettimeofday(&end, NULL);
-            num+=1;
-//            float tem = 0.1 * exp(-(end.tv_sec - start.tv_sec + 0.0) / (60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size())) * 2);
-//            std::uniform_real_distribution<> dis(0, 1);
-//            float prob = dis(mt);
-//            if (temp_solution.getcost() < bestSolution.getcost()) {
-//                bestSolution = temp_solution;
-//                solution = temp_solution;
-//            }
-//            if (prob < exp((solution.getcost() - temp_solution.getcost()) / tem)) {
-//                solution = temp_solution;
-//            }
-            if (end.tv_sec - start.tv_sec >5*index) {
-                K=0;
-                for(int i=0;i<best_solution.bins_back.size() ;i++){
-                    K=K+best_solution.bins_back[i]->get_squarearea();
-                }
-                fitlist.push_back({K,0});
-                index=index+1;
-            }
-            if (end.tv_sec - start.tv_sec > (timelimit)) break;
+            if (end.tv_sec - start.tv_sec > (60 * 0.2)) break;
         }
 //        std::cout << solution.getareasum() << "  " << solution.getunity() << std::endl;
         solution = best_solution;
         std::cout << solution.getareasum() << "  " << solution.getunity() << std::endl;
         int bin_num = solution.bins_back.size() ;
         std::cout << "bin_back number:" << bin_num << std::endl;
-//        ofstream fout2;
-//        Json::Value result_list2;
-//        output(result_list2);
-//        fout2.open("output_back_over.json");
-//        Json::StyledWriter writer2;
-//        fout2 << writer2.write(result_list2) << std::endl;
-//        fout2.close();
+        ofstream fout2;
+        Json::Value result_list2;
+        output(result_list2);
+        fout2.open("output_back_over.json");
+        Json::StyledWriter writer2;
+        fout2 << writer2.write(result_list2) << std::endl;
+        fout2.close();
     }
 //    exit(0);
     for (int i = 0; i < notbackparts.size(); i++) {
@@ -617,20 +487,15 @@ void amopt_pack::CarvingMachine::firstpack() {
     solution.update_area(1);
     std::cout << solution.getareasum() << "  " << solution.getunity() << std::endl;
     bestSolution = solution;
-    gettimeofday(&end, NULL);
-    std::cout<<"time="<<(end.tv_usec - start.tv_usec)<<std::endl;
 
-//    for (int i = 0; i < solution.bins_normal.size(); i++) output_pack(solution.bins_normal[i]);
+    for (int i = 0; i < solution.bins_normal.size(); i++) output_pack(solution.bins_normal[i]);
 
     int bin_num = solution.bins_back.size() + solution.bins_normal.size();
     std::cout << "bin number:" << bin_num << std::endl;
-    fstream f;
-    f.open("record_.txt",ios::out|ios::app);
-//    f<<"N="<<bin_num<<std::endl;
-    f.close();
 //    ofstream fout3;
 //    Json::Value result_list3;
 //    output(result_list3);
+//
 //    fout3.open("output_normal_begin.json");
 //    Json::StyledWriter writer3;
 //    fout3 << writer3.write(result_list3) << std::endl;
@@ -638,7 +503,7 @@ void amopt_pack::CarvingMachine::firstpack() {
 }
 void amopt_pack::CarvingMachine::move(mlpalns::DestroyMethod<PackSolution> &destroy,
                                       mlpalns::RepairMethod<PackSolution> &repair,
-                                      std::mt19937 &mt, float tem, int &num) {
+                                      std::mt19937 &mt, float tem)  {
     PackSolution temp_solution = solution;
     destroy.destroy_solution(temp_solution, mt);
     repair.repair_solution(temp_solution, mt);
@@ -646,16 +511,21 @@ void amopt_pack::CarvingMachine::move(mlpalns::DestroyMethod<PackSolution> &dest
     Json::Value result_list1;
     Json::Value result_list2;
     float prob = dis(mt);
-    if (solution.getunity() < bestSolution.getunity()-0.00001) {
+    if (solution.getunity() < bestSolution.getunity()) {
         bestSolution = solution;
-        num+=1;
     }
+    double x1=solution.getcost();
+    double x2=temp_solution.getcost();
     if (prob < exp((solution.getcost() - temp_solution.getcost()) / tem)) {
+//        if( temp_solution.getunity() < bestSolution.getunity()){
+//            std::cout<<1;
+//        }
+//       if( solution.bins_normal.size()>temp_solution.bins_normal.size()){
+//            std::cout<<1;
+//        }
+
         solution = temp_solution;
     }
-//    if (solution.getcost() > temp_solution.getcost()-tem) {
-//        solution = temp_solution;
-//    }
 //    ofstream fout1;
 //    ofstream fout2;
 //    if ((solution.getcost() - temp_solution.getcost())>1) {
@@ -680,11 +550,10 @@ void amopt_pack::CarvingMachine::optimize() {
     mt.seed(std::time(0u));
 //    mt.seed(3);
     std::uniform_real_distribution<float> dt(0, 1);
-    double frac_1 = 0.15, frac_2 = 0.10, frac_3 = 0.05;
+//    double frac_1 = 0.1, frac_2 = 0.05, frac_3 = 0.033;
+    double frac_1 = 0.15, frac_2 = 0.1, frac_3 = 0.05;
+    int num1 = 7, num2 = 5, num3 = 3;
 
-    int num1 = 7, num2 = 5, num3 = 3 ;
-    float timelimit=60-60 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size());
-//    float timelimit=60;
     auto repair = Repair();
     //3类不同规模的重组
     auto regroup00 = DestroyReconstruct(100, frac_1, num1);
@@ -693,6 +562,7 @@ void amopt_pack::CarvingMachine::optimize() {
     auto regroup10 = DestroyReconstruct(101, frac_1, num1);
     auto regroup11 = DestroyReconstruct(101, frac_2, num2);
     auto regroup12 = DestroyReconstruct(101, frac_3, num3);
+    auto regroup13 = DestroyReconstruct(101, frac_3, 2);
     vector<DestroyReconstruct> regroups = {regroup00, regroup01, regroup02, regroup10, regroup11, regroup12};
 
 //    auto regrouplast0 = DestroyReconstruct(102, 0, num3);
@@ -732,56 +602,45 @@ void amopt_pack::CarvingMachine::optimize() {
     float tem = 0.2;
     int timeflag=0;
     gettimeofday(&start, NULL);
-    int others=0;
-    int current_num=solution.bins_normal.size();
-    int current_time=0;
-    double total_time=0;
-    double K=0;
-    double K_=0;
-    int index_=0;
-    for(int i=0;i<bestSolution.bins_back.size() ;i++){
-        K=K+bestSolution.bins_back[i]->get_squarearea();
-    }
-    for(int i=0;i<bestSolution.bins_normal.size() ;i++){
-        K_=K_+bestSolution.bins_normal[i]->get_squarearea();
-    }
-    K_=K_+K;
-    fitlist.push_back({K,K_});
     while (true) {
-//        break;
+//        if (step>=200000) break;
         bool normal;
+        gettimeofday(&end, NULL);
+        double frac=-(end.tv_sec - start.tv_sec)/30*0.10+0.15;
         float back_ratio =
-                (solution.bins_back.size() )* solution.bins_back.size()/ (0.0 + solution.bins_back.size() + solution.bins_normal.size())/(0.0 + solution.bins_back.size() + solution.bins_normal.size());
+                (solution.bins_back.size() / 3) / (0.0 + solution.bins_back.size() + solution.bins_normal.size());
         if (dt(mt) < back_ratio) normal = false;
         else normal = true;
-        double t = static_cast<double>(end.tv_sec - start.tv_sec); // seconds
-        float frac_=0;
-        frac_=-t/timelimit*0.10+0.15;
-        auto regroupbins1=DestroyReconstruct(101, frac_, 3);
-        auto regroupbins0 = DestroyReconstruct(100, frac_, 3);
-        if (normal == true){
-            move(regroupbins1, repair, mt, tem,numr);
+//        if (step < 10000) index = 0;
+//        else if (step < 20000) index = 1;
+        if (frac>0){
+            auto regroup13 = DestroyReconstruct(101, frac, 2);
         }
+//        else index = 2;
+//        move(regroups[normal * 3 + index], repair, mt, tem); //rate3
         else{
-            move(regroupbins0, repair, mt, tem,numr);
+            index = 2;
+            move(regroups[normal * 3 + index], repair, mt, tem);
+            move(regroup13, repair, mt, tem);
         }
-        if (step % 10 == 0) {
+        if (step % 5 == 0) {
             (dt(mt) < 0.5) ? index = 0 : index = 1;
-            move(inserts[normal * 2 + index], repair, mt, tem,numi);
+
+            move(inserts[normal * 2 + index], repair, mt, tem);
         }
 
         if (step % 10 == 0) {
-            move(insert_fills[normal], repair, mt, tem,numi); // rate1
+            move(insert_fills[normal], repair, mt, tem); // rate1
         }
         if (step % 300 == 0) {
-            move(regroup_last, repair, mt, tem,numr);
+            move(regroup_last, repair, mt, tem);
         }
-        if (false || step % 20 == 19) {
+        if (false || step % 500 == 149) {
             (dt(mt) < 0.5) ? index = 0 : index = 1;
-            move(backs[index], repair, mt, tem,others);
+            move(backs[index], repair, mt, tem);
         }
         if (step % 300 == 299) {
-            move(regroup_last, repair, mt, tem,numr);
+            move(regroup_last, repair, mt, tem);
         }
         if (step % 500 == 0) {
 //            std::cout << step << "  " << tem << "  " << solution.getunity()
@@ -796,54 +655,19 @@ void amopt_pack::CarvingMachine::optimize() {
             }
         }
         if (end.tv_sec - start.tv_sec > (60 * timeflag)){
-            std::cout << step << "  " << tem << "  " << solution.getunity()<<std::endl;
+            std::cout << step << "  " << tem << "  " << solution.getunity();
             timeflag+=1;
         }
         step += 1;
         gettimeofday(&end, NULL);
-//        if(solution.getunity()<5){
-//            std::cout<<(end.tv_usec - start.tv_usec)<<std::endl;
-//        }
-        if (end.tv_sec - start.tv_sec >5*index_) {
-            K=0;
-            for(int i=0;i<bestSolution.bins_back.size() ;i++){
-                K=K+bestSolution.bins_back[i]->get_squarearea();
-            }
-            K_=0;
-            for(int i=0;i<bestSolution.bins_normal.size() ;i++){
-                K_=K_+bestSolution.bins_normal[i]->get_squarearea();
-            }
-            K_=K_+K;
-            fitlist.push_back({K,K_});
-            index_=index_+1;
-        }
-        if (end.tv_sec - start.tv_sec > (timelimit)) {
-            fstream f;
-            f.open("result.txt",ios::out|ios::app);
-            f<<"numr="<<numr<<std::endl;
-            f<<"numi="<<numi<<std::endl;
-            if(numi>0){
-                f<<"ratio="<<float(numr)/float(numi)<<std::endl;
-            }
-            f<<"K="<<solution.getunity()<<std::endl;
-            f.close();
-            numr=0;numi=0;
-        }
-        if(current_num>solution.bins_normal.size()){
-            current_time=(end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec);
-            current_num=solution.bins_normal.size();
-        }
-        if (end.tv_sec - start.tv_sec > timelimit) break;//终点到0.05
-        tem = 0.1 * exp(-(end.tv_sec - start.tv_sec + 0.0) / (timelimit) * 2);
-//        tem = 0.07 * (1-(end.tv_sec - start.tv_sec + 0.0) / (60-60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size()))) ;
-
+        if (end.tv_sec - start.tv_sec > (60 )) break;//终点到0.05
+        tem = 0.2 * exp(-(end.tv_sec - start.tv_sec + 0.0) / (60 ) * 2);
     }
-    int bin_num = solution.bins_back.size() + solution.bins_normal.size();
+    int bin_num = bestSolution.bins_back.size() + bestSolution.bins_normal.size();
     std::cout << "bin number:" << bin_num << std::endl;
-    fstream f;
-    f.open("record_.txt",ios::out|ios::app);
-    f<<solution.getunity()<<std::endl;
-    f.close();
+    std::ofstream fout("record.txt", std::ios::app);
+    if (!fout) return;
+    fout << bin_num<<'\n';
 }
 
 void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
@@ -867,18 +691,17 @@ void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
 
 
     int smallitemnum = 0;
-    float sumarea=0;
     for (int i = 0; i < solution.bins_back.size(); i++) {
-        for(int j = 0; j < solution.bins_back[i]->parts.size(); j++) {
-            sumarea+=solution.bins_back[i]->parts[j]->size;
+        if (solution.bins_back[i]->parts[0]->smallitem == true) {
+            smallitemnum++;
         }
     }
     for (int i = 0; i < solution.bins_normal.size(); i++) {
-        for(int j = 0; j < solution.bins_normal[i]->parts.size(); j++) {
-            sumarea+=solution.bins_normal[i]->parts[j]->size;
+        if (solution.bins_normal[i]->parts[0]->smallitem == true) {
+            smallitemnum++;
         }
     }
-    std::cout << "output area=" << sumarea << std::endl;
+    std::cout << "output smallitem=" << smallitemnum << std::endl;
     for (int i = 0; i < solution.bins_back.size(); i++) {
         result_list["solutions"][i]["id"] = "";
         int j = 0;
@@ -968,16 +791,11 @@ void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
             for (int k = partIndex + 1; k < solution.bins_back[i]->parts.size(); k++) {
                 Rect a = part->rect;
                 Rect b = solution.bins_back[i]->parts[k]->rect;
-                if (!(a.x + a.width <= b.x + 0.1 ||
-                      b.x + b.width <= a.x + 0.1 ||
-                      a.y + a.height <= b.y + 0.1 ||
-                      b.y + b.height <= a.y + 0.1) ||
-                    a.x <= -0.1 ||
-                    a.y <= -0.1 ||
-                    a.height <= 0.1){
+                if (!(a.x + a.width <= b.x ||
+                      b.x + b.width <= a.x ||
+                      a.y + a.height <= b.y ||
+                      b.y + b.height <= a.y))
                     std::cout << "error overlap" << solution.getunity() << "  " << solution.ratio << std::endl;
-                    output_pack(solution.bins_back[i]);
-                }
             }
         }
     }
@@ -1110,7 +928,6 @@ void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
                     a.y <= -0.1 ||
                     a.height <= 0.1) {
                     std::cout << "error overlap" << solution.getunity() << "  " << solution.ratio << std::endl;
-                    output_pack(solution.bins_normal[i]);
                     std::cout << i << std::endl;
                     std::cout << a.x << " " << a.width << " " << a.y << " " << a.height << "\n";
                     std::cout << b.x << " " << b.width << " " << b.y << " " << b.height;
@@ -1120,322 +937,5 @@ void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
     }
     result_list["back_num"] = int(solution.bins_back.size());
     result_list["unity"] = solution.getunity();
-    fstream f;
-    f.open("record.txt",ios::out|ios::app);
-//    f<<"N="<<solution.getunity()<<std::endl;
-    f<<solution.bins_normal.size()<<std::endl;
-    f.close();
-    for(int i=0;i<fitlist.size();i++){
-        result_list["fitlist"][i][0]=fitlist[i][0];
-        result_list["fitlist"][i][1]=fitlist[i][1];
-    }
-}
-Error amopt_pack::CarvingMachine::computeBRKGA(Json::Value &result_list) {
-    std::cout << "compute start" << std::endl;
-    gettimeofday(&start, NULL);
-//    firstpack();
-    gettimeofday(&end, NULL);
-//    std::cout<<"time="<<(end.tv_usec - start.tv_usec)<<std::endl;
-//    fstream f;
-//    f.open("record_.txt",ios::out|ios::app);
-//    f<<"initial_time="<<end.tv_usec - start.tv_usec<<std::endl;
-//    f.close();
-    optimizeBRKGA();
-    for(int i=0;i<fitlist.size();i++){
-        result_list["fitlist"][i][0]=fitlist[i][0];
-        result_list["fitlist"][i][1]=fitlist[i][1];
-    }
-    Json::Value temp;
-//    temp["back_num"] = int(solution.bins_back.size());
-//    temp["unity"] = solution.getunity();
-    std::cout << "compute finish" << std::endl;
-    return COMPUTE_NO_ERROR;
-}
-void amopt_pack::CarvingMachine::optimizeBRKGA() {
-    int num=parts.size();
-    int p=30*num;
-    int pm=0.15*p;
-    int pe=0.10*p;
-    float rou=0.7;
-    std::vector<float> gene;
-    std::vector<std::vector<float>> population;
-    std::vector<float> populationfitness;
-    float populationfitness_;
-    int maxiter=10000;
-    gettimeofday(&start, NULL);
-    population=initial(p,num);//初始化p
-    int index=0;
-    for(int i =0; i<maxiter; i++){
-        populationfitness=Decode(population);//论文中fitness，将population和populationfitness排序
-        double t=end.tv_sec - start.tv_sec;
-        populationfitness_=Decode_(population);//我们的fitness
-        gettimeofday(&end, NULL);
-        fitlist.push_back({t,populationfitness_});
-        if (t>60*index){
-            std::cout<<"iter="<<i<<std::endl;
-            std::cout<<"fit="<<populationfitness_<<std::endl;
-            index+=1;
-        }
-        if(t>60){
-            break;
-        }
-
-
-        std::vector<std::vector<float>> populatione=Selectpe(pe,population);//筛选精英父代
-        std::vector<std::vector<float>> populationnew= CrossOver(populatione,population,p-pe-pm,rou);//交叉算子
-        std::vector<std::vector<float>> populationm= Mutiation(pm,num);//变异算子
-        population.clear();
-
-        // 重新拼接
-        population.insert(population.end(), populatione.begin(), populatione.end());
-        population.insert(population.end(), populationnew.begin(), populationnew.end());
-        population.insert(population.end(), populationm.begin(), populationm.end());
-
-    }
-    fstream f;
-    f.open("record_.txt",ios::out|ios::app);
-    f<<populationfitness[0]<<std::endl;
-    f.close();
-}
-std::vector<std::vector<float>> amopt_pack::CarvingMachine::initial(int p,int num){
-    std::mt19937 rng(std::random_device{}());
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-
-    // 定义二维 vector，p 个个体，每个长度为 2*num
-    std::vector<std::vector<float>> population(p, std::vector<float>(2 * num));
-
-    // 填充随机数
-    for (int i = 0; i < p; ++i) {
-        for (int j = 0; j < 2 * num; ++j) {
-            population[i][j] = dist(rng);
-        }
-    }
-//    std::vector<float> gene(2 * num);
-//    for (int i = 0; i < num; ++i) {
-//        float area = parts[i]->width * parts[i]->height;
-//        gene[i] = 1.0f - area / 1220/1440;
-//    }
-//
-//    // 后 num 个基因：随机键
-//    for (int i = 0; i < num; ++i) {
-//        gene[num + i] = dist(rng);
-//    }
-//
-//    population.push_back(gene);
-    return population;
-}
-std::vector<float> amopt_pack::CarvingMachine::Decode(std::vector<std::vector<float>> &population)
-{
-    int p = population.size();
-    std::vector<float> fitlist(p);
-
-    // 1. 计算适应度
-    for (int i = 0; i < p; ++i) {
-        fitlist[i] = calfit(population[i]);
-    }
-
-    // 2. 构造索引数组
-    std::vector<int> idx(p);
-    std::iota(idx.begin(), idx.end(), 0);  // idx = 0,1,2,...,p-1
-
-    // 3. 按适应度升序排序 idx
-    std::sort(idx.begin(), idx.end(),
-              [&](int a, int b) { return fitlist[a] < fitlist[b]; });
-
-    // 4. 根据排序后的 idx 重新排列 population 和 fitlist
-    std::vector<std::vector<float>> population_sorted;
-    std::vector<float> fitlist_sorted;
-
-    population_sorted.reserve(p);
-    fitlist_sorted.reserve(p);
-
-    for (int id : idx) {
-        population_sorted.push_back(std::move(population[id]));
-        fitlist_sorted.push_back(fitlist[id]);
-    }
-
-    // 替换原始 population
-    population = std::move(population_sorted);
-
-    return fitlist_sorted;
-}
-float amopt_pack::CarvingMachine::Decode_(std::vector<std::vector<float>> population){
-    float fitlist_;
-
-    // 1. 计算适应度
-    fitlist_= calfit_(population[0]);
-    return fitlist_;
-}
-std::vector<std::vector<float>> amopt_pack::CarvingMachine::Selectpe(int pe, std::vector<std::vector<float>> population){
-    std::vector<std::vector<float>> populatione;
-    populatione.reserve(pe);
-
-    // 将 population 的前 pe 个个体复制到 populatione
-    for (int i = 0; i < pe && i < population.size(); ++i) {
-        populatione.push_back(population[i]);
-    }
-    return populatione;
-}
-std::vector<std::vector<float>> amopt_pack::CarvingMachine::CrossOver(std::vector<std::vector<float>> populatione, std::vector<std::vector<float>> population, int p_, float rou){
-    std::vector<std::vector<float>> populationnew;
-    populationnew.reserve(p_);
-
-    int elite_size = populatione.size();
-    int nonelite_size = population.size();
-
-    if (elite_size == 0 || nonelite_size == 0) {
-        return populationnew; // 无法交叉的情况
-    }
-
-    // 随机数生成器
-    static std::mt19937 rng(std::random_device{}());
-    std::uniform_int_distribution<int> pick_elite(0, elite_size - 1);
-    std::uniform_int_distribution<int> pick_nonelite(0, nonelite_size - 1);
-    std::uniform_real_distribution<float> U01(0.0f, 1.0f);
-
-    // 生成 p_ 个子代
-    for (int k = 0; k < p_; ++k) {
-
-        // 随机选择父本
-        const std::vector<float>& parent_e = populatione[pick_elite(rng)];
-        const std::vector<float>& parent_n = population[pick_nonelite(rng)];
-
-        int L = parent_e.size();
-        std::vector<float> child(L);
-
-        // 参数化均匀交叉：逐基因以 rou 概率选择精英
-        for (int i = 0; i < L; ++i) {
-            child[i] = (U01(rng) < rou) ? parent_e[i] : parent_n[i];
-        }
-
-        populationnew.push_back(std::move(child));
-    }
-
-    return populationnew;
-}
-std::vector<std::vector<float>> amopt_pack::CarvingMachine::Mutiation(int pm, int num){
-    std::mt19937 rng(std::random_device{}());
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-
-    // 定义二维 vector，p 个个体，每个长度为 2*num
-    std::vector<std::vector<float>> populationm(pm, std::vector<float>(2 * num));
-
-    // 填充随机数
-    for (int i = 0; i < pm; ++i) {
-        for (int j = 0; j < 2 * num; ++j) {
-            populationm[i][j] = dist(rng);
-        }
-    }
-
-    return populationm;
-}
-float amopt_pack::CarvingMachine::calfit(std::vector<float> population){
-    std::vector<int> idx(parts.size());
-    int num= population.size()/2;
-    std::iota(idx.begin(), idx.end(), 0);   // 生成 0,1,2,...,n-1
-    std::vector<float> pop(population.begin(), population.begin() + num);
-    std::vector<float> rotate(population.begin() + num, population.end());
-// 按 pop 的值排序 idx
-    std::sort(idx.begin(), idx.end(), [&](int a, int b){
-        return pop[a] < pop[b];
-    });
-
-// 生成重新排序的 parts
-    Part_Ptr_V reordered_parts;
-    reordered_parts.reserve(parts.size());
-    std::vector<float> reordered_rotate;
-    reordered_rotate.reserve(parts.size());
-    for (int id : idx) {
-        reordered_rotate.push_back(rotate[id]);
-        Part_Ptr part_temp = std::make_shared<Part>(*parts[id]);;
-        if (rotate[id] > 0.5f) {// 刚 push_back 的引用
-            if(part_temp->width<bins[0]->height &&part_temp->height<bins[0]->width){
-                std::swap(part_temp->width, part_temp->height);// 高效且安全
-            }
-        }
-        reordered_parts.push_back(part_temp);
-    }
-    PackSolution newsolution;
-    newsolution.bins_normal={};
-    vector<Part_Ptr_V> rects=maxRectBRKGA(reordered_parts,bins[0]->width,bins[0]->height,mt);
-    for(int i = 0; i < rects.size(); i++){
-        Bin_Ptr p_bin(new amopt_pack::Bin(bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->width,
-                                          bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->height,
-                                          false));
-        p_bin->parts=rects[i];
-        newsolution.bins_normal.push_back(p_bin);
-    }
-//    for (int i = 0; i < reordered_parts.size(); i++) {
-//        bool check = false;
-//        check = false;
-//        for (int j = 0; j < newsolution.bins_normal.size(); j++) {
-//            Part_Ptr_V parts = insert(newsolution.bins_normal[j], reordered_parts[i], mt, true, true);
-//            if (parts.size() == 0) {
-//                check = true;
-//                break;
-//            }
-//        }
-//        if (check) continue;
-//
-//        Bin_Ptr p_bin(new amopt_pack::Bin(bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->width,
-//                                          bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->height,
-//                                          false));
-//        Part_Ptr_V parts = insert(p_bin, reordered_parts[i], mt, true, true);
-//        if (parts.size() != 0) {
-////            std::cout << notbackparts[i]->width << "  " << notbackparts[i]->height << std::endl;
-////            std::cout << bins[solution.bins_back.size() + solution.bins_normal.size()]->width << "  "
-////                      << bins[solution.bins_back.size() + solution.bins_normal.size()]->height << std::endl;
-//            std::cout << "initial insert error" << std::endl;
-////                exit(0);
-//        }
-//        newsolution.bins_normal.push_back(p_bin);
-//    }
-    newsolution.update_area(1);
-    float fit=newsolution.getunity();
-    return fit;
-}
-float amopt_pack::CarvingMachine::calfit_(std::vector<float> population){
-    std::vector<int> idx(parts.size());
-    int num= population.size()/2;
-    std::iota(idx.begin(), idx.end(), 0);   // 生成 0,1,2,...,n-1
-    std::vector<float> pop(population.begin(), population.begin() + num);
-    std::vector<float> rotate(population.begin() + num, population.end());
-// 按 pop 的值排序 idx
-    std::sort(idx.begin(), idx.end(), [&](int a, int b){
-        return pop[a] < pop[b];
-    });
-
-// 生成重新排序的 parts
-    Part_Ptr_V reordered_parts;
-    reordered_parts.reserve(parts.size());
-    std::vector<float> reordered_rotate;
-    reordered_rotate.reserve(parts.size());
-    for (int id : idx) {
-        reordered_rotate.push_back(rotate[id]);
-        Part_Ptr part_temp = std::make_shared<Part>(*parts[id]);;
-        if (rotate[id] > 0.5f) {// 刚 push_back 的引用
-            if(part_temp->width<bins[0]->height &&part_temp->height<bins[0]->width){
-                std::swap(part_temp->width, part_temp->height);// 高效且安全
-            }
-        }
-        reordered_parts.push_back(part_temp);
-    }
-    PackSolution newsolution;
-    newsolution.bins_normal={};
-    vector<Part_Ptr_V> rects=maxRectBRKGA(reordered_parts,bins[0]->width,bins[0]->height,mt);
-    for(int i = 0; i < rects.size(); i++){
-        Bin_Ptr p_bin(new amopt_pack::Bin(bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->width,
-                                          bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->height,
-                                          false));
-        p_bin->parts=rects[i];
-        newsolution.bins_normal.push_back(p_bin);
-    }
-
-    newsolution.update_area(1);
-    float fit=0;
-    for (int i=0;i<newsolution.bins_normal.size();i++){
-        fit+=newsolution.bins_normal[i]->unity*newsolution.bins_normal[i]->unity;
-    }
-
-    return fit;
+    std::cout << "bin number:" << solution.getunity() << std::endl;
 }
