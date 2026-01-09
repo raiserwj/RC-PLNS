@@ -477,8 +477,8 @@ void amopt_pack::CarvingMachine::firstpack() {
 //            PackSolution temp_solution = solution;
             gettimeofday(&end, NULL);
             double t = static_cast<double>(end.tv_sec - start.tv_sec);
-            float frac_=-t/timelimit*0.10+0.15;
-
+            float frac_=0;
+            frac_=-t/timelimit*0.10+0.15;
             if (num < 10000) destroy0 = DestroyReconstruct(100, frac_, 7);
             else if (num < 20000) destroy0 = DestroyReconstruct(100, frac_, 5);
             else destroy0 = DestroyReconstruct(100, frac_, 3);
@@ -683,8 +683,8 @@ void amopt_pack::CarvingMachine::optimize() {
     double frac_1 = 0.15, frac_2 = 0.10, frac_3 = 0.05;
 
     int num1 = 7, num2 = 5, num3 = 3 ;
-//    float timelimit=300-300 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size());
-    float timelimit=60;
+    float timelimit=60-60 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size());
+//    float timelimit=60;
     auto repair = Repair();
     //3类不同规模的重组
     auto regroup00 = DestroyReconstruct(100, frac_1, num1);
@@ -755,7 +755,8 @@ void amopt_pack::CarvingMachine::optimize() {
         if (dt(mt) < back_ratio) normal = false;
         else normal = true;
         double t = static_cast<double>(end.tv_sec - start.tv_sec); // seconds
-        float frac_=-t/timelimit*0.10+0.15;
+        float frac_=0;
+        frac_=-t/timelimit*0.10+0.15;
         auto regroupbins1=DestroyReconstruct(101, frac_, 3);
         auto regroupbins0 = DestroyReconstruct(100, frac_, 3);
         if (normal == true){
@@ -866,17 +867,18 @@ void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
 
 
     int smallitemnum = 0;
+    float sumarea=0;
     for (int i = 0; i < solution.bins_back.size(); i++) {
-        if (solution.bins_back[i]->parts[0]->smallitem == true) {
-            smallitemnum++;
+        for(int j = 0; j < solution.bins_back[i]->parts.size(); j++) {
+            sumarea+=solution.bins_back[i]->parts[j]->size;
         }
     }
     for (int i = 0; i < solution.bins_normal.size(); i++) {
-        if (solution.bins_normal[i]->parts[0]->smallitem == true) {
-            smallitemnum++;
+        for(int j = 0; j < solution.bins_normal[i]->parts.size(); j++) {
+            sumarea+=solution.bins_normal[i]->parts[j]->size;
         }
     }
-    std::cout << "output smallitem=" << smallitemnum << std::endl;
+    std::cout << "output area=" << sumarea << std::endl;
     for (int i = 0; i < solution.bins_back.size(); i++) {
         result_list["solutions"][i]["id"] = "";
         int j = 0;
@@ -966,11 +968,16 @@ void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
             for (int k = partIndex + 1; k < solution.bins_back[i]->parts.size(); k++) {
                 Rect a = part->rect;
                 Rect b = solution.bins_back[i]->parts[k]->rect;
-                if (!(a.x + a.width <= b.x ||
-                      b.x + b.width <= a.x ||
-                      a.y + a.height <= b.y ||
-                      b.y + b.height <= a.y))
+                if (!(a.x + a.width <= b.x + 0.1 ||
+                      b.x + b.width <= a.x + 0.1 ||
+                      a.y + a.height <= b.y + 0.1 ||
+                      b.y + b.height <= a.y + 0.1) ||
+                    a.x <= -0.1 ||
+                    a.y <= -0.1 ||
+                    a.height <= 0.1){
                     std::cout << "error overlap" << solution.getunity() << "  " << solution.ratio << std::endl;
+                    output_pack(solution.bins_back[i]);
+                }
             }
         }
     }
@@ -1103,6 +1110,7 @@ void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
                     a.y <= -0.1 ||
                     a.height <= 0.1) {
                     std::cout << "error overlap" << solution.getunity() << "  " << solution.ratio << std::endl;
+                    output_pack(solution.bins_normal[i]);
                     std::cout << i << std::endl;
                     std::cout << a.x << " " << a.width << " " << a.y << " " << a.height << "\n";
                     std::cout << b.x << " " << b.width << " " << b.y << " " << b.height;
