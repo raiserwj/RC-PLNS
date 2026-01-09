@@ -4,10 +4,11 @@ This repository provides the data used for statistical analysis in our revision.
 
 ## 1) Build Environment (Code Compilation)
 
-The C++ implementation is compiled under **Cygwin**.  
-Please ensure a working Cygwin environment is installed, including a C++ toolchain (e.g., `g++`) and common build utilities (e.g., `make`/`cmake`, if applicable).
+The C++ implementation is compiled under **Cygwin on Windows**.  
+Please ensure a working Cygwin installation is available, including a C++ toolchain (e.g., `g++`) and common build utilities (e.g., `make` / `cmake`, if applicable).
 
-> Note: This package focuses on the reproducibility data for statistical testing. The compilation requirement is listed here to document the environment used in our experiments.
+> **Note:** This package focuses on the reproducibility data for statistical testing. The compilation requirement is provided only to document the environment used in our experiments.  
+> **Windows recommendation:** We suggest using **CLion** as the IDE to configure, build, and run the code.
 
 ## 2) Released Results for Kruskal–Wallis (KW) Testing
 
