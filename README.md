@@ -1,4 +1,4 @@
-The default branch is the research branch, used for 2DBPP studies based on EoH. The RC-PLNS algorithm is maintained in the branch “RC-PLNS for paper.” The LLM version is a de-engineered and simplified variant of the baseline derived from the paper version, and it will be continuously updated as the research progresses.
+The default branch is the research branch, used for 2DBPP studies based on EoH. The RC-PLNS algorithm is maintained in the branch “RC-PLNS_for_paper.” The LLM version is a de-engineered and simplified variant of the baseline derived from the paper version, and it will be continuously updated as the research progresses.
 
 The paper-version code documentation is as follows:
 
