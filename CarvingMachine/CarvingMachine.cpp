@@ -6,2429 +6,1436 @@
 #include <chrono>
 #include <sys/time.h>
 #include<math.h>
-#include <algorithm>
-#include <limits>
-#include<cassert>
-using namespace std;
-using Clock = std::chrono::steady_clock;
-using microseconds = std::chrono::microseconds;
-vector<vector<double>> Input(string str) {
+
+amopt_pack::CarvingMachine::CarvingMachine() {
+    std::cout << "carving machine initial" << std::endl;
+}
+
+amopt_pack::CarvingMachine::~CarvingMachine() {
+    std::cout << "carving machine delete";
+}
+
+bool check(vector<float> a, vector<float> b, vector<float> c) {
+    return ((b[0] == a[0] && b[1] == c[1]) || (b[1] == a[1] && b[0] == c[0]));
+}
+
+Error amopt_pack::CarvingMachine::Input(string str) {
     Json::CharReaderBuilder rbuilder;
     Json::CharReader *reader(rbuilder.newCharReader());
 //    rbuilder["collectComments"] = false;
     Json::Value root_group;
     JSONCPP_STRING errs;
     int partnum=0;
-    vector<vector<double>> parts={};
-    reader->parse(str.data(), str.data() + str.size(), &root_group, &errs);
+    numr=0;
+    numi=0;
+    if (!reader->parse(str.data(), str.data() + str.size(), &root_group, &errs)) {
+        return Error::INPUT_FORMAT_ERROR;
+    }
     delete reader;
+
+    int num_small = 0;
+    for (int i = 0; i < root_group["plates"].size(); i++) {
+        for (int j = 0; j < root_group["plates"][i]["number"].asInt(); j++) {
+            Bin_Ptr bin_(new amopt_pack::Bin(root_group["plates"][i]["width"].asDouble(),
+                                             root_group["plates"][i]["height"].asDouble(), true));
+            bins.push_back(bin_);
+        }
+    }
     for (int i = 0; i < root_group["items"].size(); i++) {
+//        if(root_group["items"][i]["BackFrontPriority"].asBool()==false)
+//        if(root_group["items"][i]["BackFrontPriority"].asBool()==true)
+//        {
+//            continue;
+//        }
         float x_min = 100000, x_max = -100000, y_min = 100000, y_max = -100000;
         std::vector<std::vector<float>> points;
         for (int j = 0; j < root_group["items"][i]["points"].size(); j++) {
-            std::vector<double> point;
+            std::vector<float> point;
             point.push_back(root_group["items"][i]["points"][j][0].asFloat());
             point.push_back(root_group["items"][i]["points"][j][1].asFloat());
+            points.push_back(point);
             if (point[0] < x_min) x_min = point[0];
             if (point[0] > x_max) x_max = point[0];
             if (point[1] < y_min) y_min = point[1];
             if (point[1] > y_max) y_max = point[1];
         }
-        parts.push_back({0,0,x_max-x_min,y_max-y_min});
-    }
-    return parts;
-}
-vector<double> Inputbinsize(string str){
-    Json::CharReaderBuilder rbuilder;
-    Json::CharReader *reader(rbuilder.newCharReader());
-//    rbuilder["collectComments"] = false;
-    Json::Value root_group;
-    JSONCPP_STRING errs;
-    int partnum=0;
-    vector<vector<double>> parts={};
-    reader->parse(str.data(), str.data() + str.size(), &root_group, &errs);
-    delete reader;
-    return {root_group["plates"][0]["width"].asDouble(),root_group["plates"][0]["height"].asDouble()};
-}
-static inline double binFillArea(const Bin& b) {
-    double s = 0.0;
-    for (const auto& r : b.rects) {
-        if (r.w == 0.0 || r.h == 0.0) continue; // 若无“无效矩形”，可删掉
-        s += r.w * r.h;
-    }
-    return s;
-}
-std::vector<Rect> destroy_solution_1(std::vector<Bin> &sol,
-                                     int binnum,
-                                     std::mt19937 &mt)
-{
-    std::vector<Rect> destroy_set;
-
-    const int n = (int)sol.size();
-    if (n == 0 || binnum <= 0) return destroy_set;
-
-    const double binArea = 1;
-    if (binArea <= 0.0) return destroy_set;
-
-    // 1) 计算每个 bin 的利用率
-    std::vector<double> util(n, 0.0);
-    for (int i = 0; i < n; ++i) {
-        util[i] = binFillArea(sol[i]) / binArea;
-    }
-
-    // 2) 按利用率从高到低排序索引（高利用率在前，低利用率在后）
-    std::vector<int> idx(n);
-    std::iota(idx.begin(), idx.end(), 0);
-    std::sort(idx.begin(), idx.end(),
-              [&](int a, int b) { return util[a] > util[b]; });
-
-    // 3) 取“后 75%”：去掉前 25%（最高利用率的 25%）
-    int cut =0;
-    if(binnum>3){
-         cut = (int)std::ceil(0.25 * n);
-    }     // 前 25% 的数量
-    else{
-         cut = (int)std::ceil(0 * n);
-    }
-    std::vector<int> candidates;
-    candidates.reserve(n - cut);
-    for (int k = cut; k < n; ++k) candidates.push_back(idx[k]);
-
-    // 候选不足时退化：用全部 bin
-    if ((int)candidates.size() < 1) candidates = idx;
-
-    // 4) 从 candidates 中随机选 num 个要删除的 bin
-    const int num = std::min(binnum, (int)candidates.size());
-    std::shuffle(candidates.begin(), candidates.end(), mt);
-    candidates.resize(num);
-
-    // 5) 标记删除 + 预留空间
-    std::vector<char> selected(n, 0);
-    size_t total_rects = 0;
-    for (int id : candidates) {
-        selected[id] = 1;
-        total_rects += sol[id].rects.size();
-    }
-    destroy_set.reserve(total_rects);
-
-    // 6) 重建 remaining
-    std::vector<Bin> remaining;
-    remaining.reserve(n - num);
-
-    for (int i = 0; i < n; ++i) {
-        if (selected[i]) {
-            auto& rs = sol[i].rects;
-            destroy_set.insert(destroy_set.end(),
-                               std::make_move_iterator(rs.begin()),
-                               std::make_move_iterator(rs.end()));
-        } else {
-            remaining.push_back(std::move(sol[i]));
-        }
-    }
-
-    sol.swap(remaining);
-    return destroy_set;
-}
-std::vector<Rect> destroy_solution_3(std::vector<Bin>& sol, int binnum) {
-    std::vector<Rect> destroy_set;
-    if (sol.empty() || binnum <= 0) return destroy_set;
-
-    const size_t n = sol.size();
-    const size_t k = std::min<size_t>((size_t)binnum, n);
-
-    // 1) 计算每个 bin 的填充面积（sum(w*h)）
-    std::vector<double> fillarea(n, 0.0);
-    for (size_t i = 0; i < n; ++i) {
-        double s = 0.0;
-        for (const auto& r : sol[i].rects) {
-            if (r.w == 0.0 || r.h == 0.0) continue; // 若你不需要无效判断可去掉
-            s += r.w * r.h;
-        }
-        fillarea[i] = s;
-    }
-
-    // 2) 生成索引并按 fillarea 从小到大排序
-    std::vector<int> idx((int)n);
-    std::iota(idx.begin(), idx.end(), 0);
-    std::sort(idx.begin(), idx.end(),
-              [&](int a, int b) { return fillarea[(size_t)a] < fillarea[(size_t)b]; });
-
-    // 3) 取最小的 k 个 bin，下标从大到小删除，避免 erase 造成下标偏移
-    std::vector<int> to_remove(idx.begin(), idx.begin() + (int)k);
-    std::sort(to_remove.begin(), to_remove.end(), std::greater<int>());
-
-    // （可选）预留 destroy_set 大概容量，减少扩容
-    size_t approx = 0;
-    for (int i : to_remove) approx += sol[(size_t)i].rects.size();
-    destroy_set.reserve(approx);
-
-    for (int i : to_remove) {
-        // 把该 bin 的矩形加入 destroy_set（这里用 move，避免拷贝）
-        auto& rects = sol[(size_t)i].rects;
-        destroy_set.insert(destroy_set.end(),
-                           std::make_move_iterator(rects.begin()),
-                           std::make_move_iterator(rects.end()));
-
-        // 删除该 bin
-        sol.erase(sol.begin() + i);
-    }
-
-    return destroy_set;
-}
-
-std::vector<Rect> destroy_solution_2(std::vector<Bin>& sol) {
-    if (sol.empty()) return {};
-
-    int bestPos = -1;
-    double bestAvg = std::numeric_limits<double>::infinity();
-
-    for (size_t i = 0; i < sol.size(); ++i) {
-        const auto& bin = sol[i];
-        if (bin.rects.empty()) continue;  // 避免除零；也避免选到空 bin
-
-        double sumArea = 0.0;
-        for (const auto& r : bin.rects) {
-            // 若你用 h==0 表示无效，可在这里跳过无效矩形
-            if (r.w == 0.0 || r.h == 0.0) continue;
-            sumArea += r.w * r.h;
-        }
-
-        // 注意：你原代码用 sol[i].size() 作为分母（包含可能的“空条目”）。
-        // 如果你希望严格等价，就用 bin.rects.size()；如果你希望更合理，就用有效计数。
-//        const double avg = sumArea / (double)bin.rects.size();
-        const double avg = sumArea ;
-
-        if (avg < bestAvg) {
-            bestAvg = avg;
-            bestPos = (int)i;
-        }
-    }
-
-    if (bestPos == -1) {
-        // 全是空 bin 的情况：按原逻辑会出错；这里选择不破坏 sol
-        return {};
-    }
-
-    std::vector<Rect> destroy_set = std::move(sol[bestPos].rects);
-    sol.erase(sol.begin() + bestPos);
-    return destroy_set;
-}
-std::vector<Rect> destroy_solution_4(std::vector<Bin>& sol) {
-    if (sol.empty()) return {};
-
-    int bestPos1 = -1; // 最小 avg
-    int bestPos2 = -1; // 第二小 avg
-    double bestAvg1 = std::numeric_limits<double>::infinity();
-    double bestAvg2 = std::numeric_limits<double>::infinity();
-
-    for (size_t i = 0; i < sol.size(); ++i) {
-        const auto& bin = sol[i];
-        if (bin.rects.empty()) continue; // 避免除零/空 bin
-
-        double sumArea = 0.0;
-        for (const auto& r : bin.rects) {
-            if (r.w == 0.0 || r.h == 0.0) continue; // 若你没有“无效矩形”，可删掉
-            sumArea += r.w * r.h;
-        }
-
-//        const double avg = sumArea / (double)bin.rects.size();
-        const double avg = sumArea;
-
-        if (avg < bestAvg1) {
-            bestAvg2 = bestAvg1; bestPos2 = bestPos1;
-            bestAvg1 = avg;      bestPos1 = (int)i;
-        } else if (avg < bestAvg2) {
-            bestAvg2 = avg;      bestPos2 = (int)i;
-        }
-    }
-
-    // 没有任何非空 bin
-    if (bestPos1 == -1) return {};
-
-    // 只有一个非空 bin：退化为最小
-    int target = (bestPos2 != -1) ? bestPos2 : bestPos1;
-
-    std::vector<Rect> destroy_set = std::move(sol[target].rects);
-    sol.erase(sol.begin() + target);
-    return destroy_set;
-}
-std::vector<Rect> destroy_solution_5(std::vector<Bin>& sol, std::mt19937& mt) {
-    if (sol.empty()) return {};
-
-    std::vector<int> nonEmpty;
-    nonEmpty.reserve(sol.size());
-    for (int i = 0; i < (int)sol.size(); ++i) {
-        if (!sol[(size_t)i].rects.empty()) nonEmpty.push_back(i);
-    }
-    if (nonEmpty.empty()) return {};
-
-    std::uniform_int_distribution<int> dis(0, (int)nonEmpty.size() - 1);
-    const int pos = nonEmpty[(size_t)dis(mt)];
-
-    std::vector<Rect> destroy_set = std::move(sol[(size_t)pos].rects);
-    sol.erase(sol.begin() + pos);
-    return destroy_set;
-}
-std::vector<Rect> destroy_solution_6(std::vector<Bin>& sol) {
-    if (sol.empty()) return {};
-
-    int bestPos1 = -1, bestPos2 = -1; // 最小、第二小
-    double bestSum1 = std::numeric_limits<double>::infinity();
-    double bestSum2 = std::numeric_limits<double>::infinity();
-
-    for (size_t i = 0; i < sol.size(); ++i) {
-        const auto& bin = sol[i];
-        if (bin.rects.empty()) continue;  // 避免选到空 bin
-
-        double sumArea = 0.0;
-        for (const auto& r : bin.rects) {
-            if (r.w == 0.0 || r.h == 0.0) continue; // 跳过无效矩形（如你有此约定）
-            sumArea += r.w * r.h;
-        }
-
-        // 用总面积做比较：维护最小与第二小
-        if (sumArea < bestSum1) {
-            bestSum2 = bestSum1; bestPos2 = bestPos1;
-            bestSum1 = sumArea;  bestPos1 = (int)i;
-        } else if (sumArea < bestSum2) {
-            bestSum2 = sumArea;  bestPos2 = (int)i;
-        }
-    }
-
-    // 不足两个非空 bin：不破坏 sol
-    if (bestPos2 == -1) return {};
-
-    std::vector<Rect> destroy_set = std::move(sol[bestPos2].rects);
-    sol.erase(sol.begin() + bestPos2);
-    return destroy_set;
-}
-void repair_solution1(
-        std::vector<Bin>& solution,
-        const std::vector<Rect>& destroy_set,
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt
-) {
-    if (destroy_set.empty()) return;
-
-    bool flag = false;
-    std::vector<Bin> bins = regroup_1(destroy_set, &flag, binSize, destroy_num, mt);
-
-    solution.insert(solution.end(),
-                    std::make_move_iterator(bins.begin()),
-                    std::make_move_iterator(bins.end()));
-}
-void repair_solution2(
-        std::vector<Bin>& solution,
-        const std::vector<Rect>& destroy_set,
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt
-) {
-    if (destroy_set.empty()) return;
-
-    bool flag = false; // 原代码没用 flag，这里保留，便于你后续扩展
-    std::vector<Bin> bins = regroup_2(destroy_set, &flag, binSize, destroy_num, mt);
-
-    solution.insert(solution.end(),
-                    std::make_move_iterator(bins.begin()),
-                    std::make_move_iterator(bins.end()));
-}
-bool repair_solution3(
-        std::vector<Bin>& solution,
-        const std::vector<Rect>& destroy_set,
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt
-) {
-    if (destroy_set.empty()) return false;
-
-    bool flag = false;
-    std::vector<Bin> temp_solution = std::move(regroup_3(solution, destroy_set, &flag, binSize, destroy_num, mt));
-    if(flag==true){
-        solution=temp_solution;
-    }
-    return flag;
-}
-bool repair_solution5(
-        std::vector<Bin>& solution,
-        const std::vector<Rect>& destroy_set,
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt
-) {
-    if (destroy_set.empty()) return false;
-
-    bool flag = false;
-    std::vector<Bin> temp_solution = std::move(regroup_3_(solution, destroy_set, &flag, binSize, destroy_num, mt));
-    if(flag==true){
-        solution=temp_solution;
-    }
-    return flag;
-}
-bool repair_solution4(
-        std::vector<Bin>& solution,
-        const std::vector<Rect>& destroy_set,
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt
-) {
-    if (destroy_set.empty()) return false;
-
-    bool flag = false;
-    std::vector<Bin> newBins = regroup_4(destroy_set, &flag, binSize, destroy_num, mt);
-
-    solution.insert(solution.end(),
-                    std::make_move_iterator(newBins.begin()),
-                    std::make_move_iterator(newBins.end()));
-
-    // 你原来这里的 count_in_bins 未完成；如果需要统计，可在此补充
-    return flag;
-}
-
-    // 统计 bins 中所有 vector<double> 的总数
-//    for (const auto& bin : bins) {
-//        count_in_bins += bin.size();
-//    }
-
-    // destroy_set 中的数量就是 destroy_set.size()
-//    std::size_t count_in_destroy = destroy_set.size();
-//    if (flag && count_in_bins == count_in_destroy){
-//        if (sumarea(bins)!=sumarea({destroy_set})){
-//            flag=false;
-//        }
-//        int binnum=0;
-//        for (std::size_t i = 0; i < temp_bins->size(); ++i) {
-//            if (!(*temp_bins)[i].empty()) {
-//                ++binnum;
-//            }
-//        }
-//        std::cout<<binnum-27;
-//    }
-//    else{
-//        flag=false;
-//    }
-
-//bool repair_solution5(vector<vector<vector<double>>> &solution, vector<vector<double>> destroy_set,vector<double> binsize,int destroy_num,std::mt19937 mt) {
-//    if (destroy_set.size() == 0) return false;
-//    bool flag;
-//    vector<vector<vector<double>>> *temp_bins;
-//    temp_bins = &solution;
-//    vector<vector<vector<double>>> bins = regroup_5(destroy_set, &flag, binsize, destroy_num,mt);
-//
-//    (*temp_bins).insert((*temp_bins).end(), bins.begin(),
-//                        bins.end());
-//    std::size_t count_in_bins = 0;
-//
-//    // 统计 bins 中所有 vector<double> 的总数
-//    for (const auto& bin : bins) {
-//        count_in_bins += bin.size();
-//    }
-//
-//    // destroy_set 中的数量就是 destroy_set.size()
-//    std::size_t count_in_destroy = destroy_set.size();
-//    if (flag && count_in_bins == count_in_destroy){
-//        if (sumarea(bins)!=sumarea({destroy_set})){
-//            flag=false;
-//        }
-////        int binnum=0;
-////        for (std::size_t i = 0; i < temp_bins->size(); ++i) {
-////            if (!(*temp_bins)[i].empty()) {
-////                ++binnum;
-////            }
-////        }
-////        std::cout<<binnum-27;
-//    }
-//    else{
-//        flag=false;
-//    }
-//
-//    return flag;
-//}
-bool rectsOverlap(const vector<double>& a, const vector<double>& b) {
-    double ax1 = a[0];
-    double ay1 = a[1];
-    double ax2 = a[0] + a[2];
-    double ay2 = a[1] + a[3];
-
-    double bx1 = b[0];
-    double by1 = b[1];
-    double bx2 = b[0] + b[2];
-    double by2 = b[1] + b[3];
-
-    // 不重叠的四种情况（<= 允许边界刚好贴住）
-    if (ax2 <= bx1 + 1e-9) return false; // a 在 b 左侧
-    if (bx2 <= ax1 + 1e-9) return false; // b 在 a 左侧
-    if (ay2 <= by1 + 1e-9) return false; // a 在 b 下方
-    if (by2 <= ay1 + 1e-9) return false; // b 在 a 下方
-
-    // 其他情况都视为有重叠
-    return true;
-}
-
-// 检查所有 bin 是否存在重叠，存在则返回 false，并打印出问题位置
-bool check_bins_no_overlap(const vector<vector<vector<double>>>& bins) {
-    bool ok = true;
-    for (size_t b = 0; b < bins.size(); ++b) {
-        const auto& bin = bins[b];
-        for (size_t i = 0; i < bin.size(); ++i) {
-            for (size_t j = i + 1; j < bin.size(); ++j) {
-                if (rectsOverlap(bin[i], bin[j])) {
-                    ok = false;
-                }
-            }
-        }
-    }
-    return ok;
-}
-std::vector<Bin> regroup_1(
-        std::vector<Rect> destroy_set,   // 按值：内部可直接传给 maxRects
-        bool* success_flag,
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt
-) {
-    std::vector<Bin> bins_ret;
-    if (destroy_set.empty()) {
-        if (success_flag) *success_flag = false;
-        return bins_ret;
-    }
-
-    float score1MaxRects = 0.0f, score2MaxRects = 0.0f;
-
-    // 直接把 destroy_set 作为 parts 传入（maxRects 内部会 shuffle/erase）
-    std::vector<Bin> retMaxRects = maxRects(
-            std::move(destroy_set),
-            binSize.w,
-            binSize.h,
-            destroy_num,
-            &score1MaxRects,
-            &score2MaxRects,
-            mt
-    );
-
-    const bool successMaxRects = (score1MaxRects == 0.0f);
-
-    if (!successMaxRects) {
-        if (success_flag) *success_flag = false;
-        return {}; // 与原逻辑一致
-    }
-
-    // 成功：只保留非空 bin
-    bins_ret.reserve(retMaxRects.size());
-    for (auto& b : retMaxRects) {
-        if (!b.rects.empty()) {
-            bins_ret.push_back(std::move(b)); // move：避免拷贝
-        }
-    }
-
-    if (success_flag) *success_flag = true;
-    return bins_ret;
-}
-
-std::vector<Bin> regroup_2(
-        std::vector<Rect> destroy_set,   // 按值：内部要 sort
-        bool* success_flag,
-        const Rect& binSize,             // 只用 binSize.w / binSize.h
-        int destroy_num,
-        std::mt19937& mt                 // 关键：按引用
-) {
-    std::sort(destroy_set.begin(), destroy_set.end(), cmpArea);
-
-    std::vector<Bin> bins;
-    bins.reserve(std::min<size_t>(destroy_set.size(), (destroy_num > 0 ? (size_t)destroy_num : destroy_set.size())));
-    bins.push_back(Bin{});
-
-    // 每个 bin 一份 free-rectangles
-    std::vector<std::vector<Rect>> freeRects;
-    freeRects.reserve(bins.capacity());
-    freeRects.push_back({ Rect{0, 0, binSize.w, binSize.h} });
-
-    for (const auto& item : destroy_set) {
-        bool placed = false;
-
-        // 尝试放入已有 bin
-        for (size_t k = 0; k < bins.size(); ++k) {
-            Rect pos = Insert(item.w, item.h, freeRects[k], mt);
-            if (pos.h != 0) {
-                bins[k].rects.push_back(pos);
-                placed = true;
-                break;
-            }
-        }
-
-        // 放不进去则新开一个 bin
-        if (!placed) {
-            bins.push_back(Bin{});
-            freeRects.push_back({ Rect{0, 0, binSize.w, binSize.h} });
-
-            Rect pos = Insert(item.w, item.h, freeRects.back(), mt);
-
-            // 你原代码这里是 push destroy_set[j]（忽略了 pos）。更合理的做法是：
-            if (pos.h != 0) bins.back().rects.push_back(pos);
-            else            bins.back().rects.push_back(item); // 极端情况下 Insert 仍失败则保底
-        }
-    }
-
-    if (success_flag) {
-        // 你原函数没设置 success_flag；这里给一个常见判定（可按你 repair 的逻辑自行调整）
-        *success_flag = (destroy_num <= 0) ? true : ((int)bins.size() <= destroy_num);
-    }
-    return bins;
-}
-std::vector<Bin> regroup_3(
-        std::vector<Bin> solution,                 // 按值：返回新解（与原函数一致）
-        const std::vector<Rect>& destroy_set,       // const&：避免拷贝
-        bool* success_flag,
-        const Rect& binSize,
-        int /*destroy_num*/,                        // 原函数里没用到，保留占位
-        std::mt19937& mt                            // 关键：按引用
-) {
-    std::vector<Bin> temp_bins = std::move(solution);
-
-    if (success_flag) *success_flag = false;
-
-    // 与原逻辑一致：空解则直接把 destroy_set 作为一个新 bin 塞进去
-    if (temp_bins.empty()) {
-        Bin b;
-        b.rects = destroy_set;
-        temp_bins.push_back(std::move(b));
-        if (success_flag) *success_flag = true;
-        return temp_bins;
-    }
-
-    // parts = destroy_set 并 shuffle（保留 destroy_set 原顺序用于失败分支）
-    std::vector<Rect> parts = destroy_set;
-    std::shuffle(parts.begin(), parts.end(), mt);
-
-    std::vector<Rect> remain_parts;
-    remain_parts.reserve(parts.size());
-
-    // 用“数组 + 标记”替代 map：索引范围固定为 [0, temp_bins.size())
-    const size_t nBins = temp_bins.size();
-    std::vector<Bin> modified(nBins);       // 存放被修改过的 bin
-    std::vector<char> touched(nBins, 0);    // 是否已拷贝到 modified
-    std::vector<int> touched_idx;
-    touched_idx.reserve(std::min(nBins, parts.size()));
-
-    // 随机选择要尝试插入的 bin
-    int minIdx = -1;
-    double minA = std::numeric_limits<double>::infinity();
-    for (int i = 0; i < (int)nBins; ++i) {
-        const double a = sumArea(temp_bins[(size_t)i].rects); // 你已有的 sumArea(rects)
-        if (a < minA) { minA = a; minIdx = i; }
-    }
-
-// 随机选 bin：排除 minIdx
-    if (nBins <= 1 || minIdx < 0) {
-        return {}; // 或者按你的逻辑处理：无法排除/无法选择
-    }
-    std::uniform_int_distribution<int> pickBin(0, (int)nBins - 2);
-    int r = pickBin(mt);
-    int idx = (r >= minIdx) ? (r + 1) : r;
-
-    for (const auto& p : parts) {
-        const int idx = pickBin(mt);
-        bool temp_flag=false;
-        modified[(size_t)idx] = temp_bins[(size_t)idx]; // 第一次命中才复制
-
-        // 尝试插入；失败则返回 {p}
-        std::vector<Rect> leftover = insertparts_1(modified[(size_t)idx].rects, p, binSize, mt,&temp_flag);
-        if (temp_flag==false){
-            remain_parts.insert(remain_parts.end(),
-                                std::make_move_iterator(leftover.begin()),
-                                std::make_move_iterator(leftover.end()));
-        }
-        else if (!leftover.empty()) {
-            remain_parts.insert(remain_parts.end(),
-                                std::make_move_iterator(leftover.begin()),
-                                std::make_move_iterator(leftover.end()));
-            temp_bins[(size_t)idx]=modified[(size_t)idx];
-        }
-        else{
-            temp_bins[(size_t)idx]=modified[(size_t)idx];
-        }
-    }
-
-    // 如果存在放不进去的 parts：尝试用 regroup_1 再打一个新 bin
-    if (!remain_parts.empty()) {
-        bool flag_pack = false;
-        std::vector<Bin> new_bins = regroup_4(remain_parts, &flag_pack, binSize, 1, mt);
-
-        if (flag_pack && !new_bins.empty() && !new_bins[0].rects.empty()) {
-
-            // 写回被修改的 bins
-            // 加入新 bin
-            temp_bins.push_back(std::move(new_bins[0]));
-            if (success_flag) *success_flag = true;
-        } else {
-            // 与原逻辑一致：失败则把原 destroy_set 整体作为一个新 bin 追加
-            Bin b;
-            b.rects = destroy_set;
-            temp_bins.push_back(std::move(b));
-            *success_flag = false;
-        }
-//        int sumnum=0;
-//        for (int i=0;i<temp_bins.size();i++){
-//            sumnum+=temp_bins[i].rects.size();
-//        }
-//        if (sumnum>100 && *success_flag==true){
-//            std::cout<<1;
-//        }
-        return temp_bins;
-    }
-
-    // remain_parts 为空：仅写回被修改的 bins
-
-    *success_flag = true;
-    return temp_bins;
-}
-std::vector<Bin> regroup_3_(
-        std::vector<Bin> solution,                 // 按值：返回新解（与原函数一致）
-        const std::vector<Rect>& destroy_set,       // const&：避免拷贝
-        bool* success_flag,
-        const Rect& binSize,
-        int /*destroy_num*/,                        // 原函数里没用到，保留占位
-        std::mt19937& mt                            // 关键：按引用
-) {
-    std::vector<Bin> temp_bins = std::move(solution);
-
-    if (success_flag) *success_flag = false;
-
-    // 与原逻辑一致：空解则直接把 destroy_set 作为一个新 bin 塞进去
-    if (temp_bins.empty()) {
-        Bin b;
-        b.rects = destroy_set;
-        temp_bins.push_back(std::move(b));
-        if (success_flag) *success_flag = true;
-        return temp_bins;
-    }
-
-    // parts = destroy_set 并 shuffle（保留 destroy_set 原顺序用于失败分支）
-    std::vector<Rect> parts = destroy_set;
-    std::shuffle(parts.begin(), parts.end(), mt);
-
-    std::vector<Rect> remain_parts;
-    remain_parts.reserve(parts.size());
-
-    // 用“数组 + 标记”替代 map：索引范围固定为 [0, temp_bins.size())
-    const size_t nBins = temp_bins.size();
-    std::vector<Bin> modified(nBins);       // 存放被修改过的 bin
-    std::vector<char> touched(nBins, 0);    // 是否已拷贝到 modified
-    std::vector<int> touched_idx;
-    touched_idx.reserve(std::min(nBins, parts.size()));
-
-    // 随机选择要尝试插入的 bin
-    int minIdx = -1;
-    double minA = std::numeric_limits<double>::infinity();
-    for (int i = 0; i < (int)nBins; ++i) {
-        const double a = sumArea(temp_bins[(size_t)i].rects); // 你已有的 sumArea(rects)
-        if (a < minA) { minA = a; minIdx = i; }
-    }
-
-// 随机选 bin：排除 minIdx
-    if (nBins <= 1 || minIdx < 0) {
-        return {}; // 或者按你的逻辑处理：无法排除/无法选择
-    }
-    std::uniform_int_distribution<int> pickBin(0, (int)nBins - 1);
-    int r = pickBin(mt);
-//    int idx = (r >= minIdx) ? (r + 1) : r;
-
-    for (const auto& p : parts) {
-        const int idx = pickBin(mt);
-        bool temp_flag=false;
-        modified[(size_t)idx] = temp_bins[(size_t)idx]; // 第一次命中才复制
-
-        // 尝试插入；失败则返回 {p}
-        std::vector<Rect> leftover = insertparts_1(modified[(size_t)idx].rects, p, binSize, mt,&temp_flag);
-        if (temp_flag==false){
-            remain_parts.insert(remain_parts.end(),
-                                std::make_move_iterator(leftover.begin()),
-                                std::make_move_iterator(leftover.end()));
-        }
-        else if (!leftover.empty()) {
-            remain_parts.insert(remain_parts.end(),
-                                std::make_move_iterator(leftover.begin()),
-                                std::make_move_iterator(leftover.end()));
-            temp_bins[(size_t)idx]=modified[(size_t)idx];
-        }
-        else{
-            temp_bins[(size_t)idx]=modified[(size_t)idx];
-        }
-    }
-
-    // 如果存在放不进去的 parts：尝试用 regroup_1 再打一个新 bin
-    if (!remain_parts.empty()) {
-        bool flag_pack = false;
-        std::vector<Bin> new_bins = regroup_4(remain_parts, &flag_pack, binSize, 1, mt);
-
-        if (flag_pack && !new_bins.empty() && !new_bins[0].rects.empty()) {
-
-            // 写回被修改的 bins
-            // 加入新 bin
-            temp_bins.push_back(std::move(new_bins[0]));
-            if (success_flag) *success_flag = true;
-        } else {
-            // 与原逻辑一致：失败则把原 destroy_set 整体作为一个新 bin 追加
-            Bin b;
-            b.rects = destroy_set;
-            temp_bins.push_back(std::move(b));
-            *success_flag = false;
-        }
-//        int sumnum=0;
-//        for (int i=0;i<temp_bins.size();i++){
-//            sumnum+=temp_bins[i].rects.size();
-//        }
-//        if (sumnum>100){
-//            std::cout<<1;
-//        }
-        return temp_bins;
-    }
-
-    // remain_parts 为空：仅写回被修改的 bins
-
-    *success_flag = true;
-    return temp_bins;
-}
-static inline double sumArea(const std::vector<Rect>& rs) {
-    double s = 0.0;
-    for (const auto& r : rs) {
-        if (r.w == 0.0 || r.h == 0.0) continue;
-        s += r.w * r.h;
-    }
-    return s;
-}
-
-struct PackResult {
-    std::vector<Bin> bins;      // 已装入的 bins（最多 destroy_num 个）
-    double score1{0.0};         // 未装入面积
-    double score2{0.0};         // 最后一个 bin 的面积
-};
-
-static PackResult pack_with_order(
-        std::vector<Rect> parts,        // 已按规则排序/打乱
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt
-) {
-    PackResult out;
-
-    if (destroy_num <= 0) destroy_num = 1;
-
-    std::vector<Bin> bins;
-    bins.reserve(std::min<int>(destroy_num, (int)parts.size()));
-    bins.push_back(Bin{});
-
-    std::vector<std::vector<Rect>> freeRects;
-    freeRects.reserve(bins.capacity());
-    freeRects.push_back({ Rect{0,0,binSize.w,binSize.h} });
-
-    int j = 0;
-    for (; j < (int)parts.size(); ++j) {
-        const Rect& item = parts[j];
-        bool placed = false;
-
-        for (size_t k = 0; k < bins.size(); ++k) {
-            Rect pos = Insert(item.w, item.h, freeRects[k], mt);
-            if (pos.h != 0) {
-                bins[k].rects.push_back(pos);
-                placed = true;
-                break;
-            }
-        }
-
-        if (!placed) {
-            if ((int)bins.size() >= destroy_num) {
-                break; // 达到 bin 上限且放不下：停止
-            }
-            // 新开一个 bin 再放
-            bins.push_back(Bin{});
-            freeRects.push_back({ Rect{0,0,binSize.w,binSize.h} });
-
-            Rect pos = Insert(item.w, item.h, freeRects.back(), mt);
-            if (pos.h == 0) {
-                // 理论上不应发生（新 bin 也放不下），这里直接停止
-                break;
-            }
-            bins.back().rects.push_back(pos);
-        }
-    }
-
-    // score1：未装入面积
-    double leftover = 0.0;
-    for (int k = j; k < (int)parts.size(); ++k) {
-        leftover += parts[k].w * parts[k].h;
-    }
-
-    // score2：最后一个 bin 的面积（用来打平）
-    double lastBinArea = 0.0;
-    if (!bins.empty()) {
-        double minArea = std::numeric_limits<double>::infinity();
-        for (const auto& b : bins) {
-            if (b.rects.empty()) continue;              // 若仍希望跳过空 bin（推荐，否则最小可能变成 0）
-            const double a = sumArea(b.rects);
-            if (a < minArea) minArea = a;
-        }
-        if (minArea != std::numeric_limits<double>::infinity())
-            lastBinArea = minArea;                      // 这里就是“最小的那个”
-    }
-
-    out.bins   = std::move(bins);
-    out.score1 = leftover;
-    out.score2 = lastBinArea;
-    return out;
-}
-static PackResult pack_with_order_LLM(
-        std::vector<Rect> parts,        // 已按规则排序/打乱
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt,
-        int method
-) {
-    PackResult out;
-    std::vector<Rect> parts_sorted=parts;
-    std::unordered_map<int, PairInfo> pairs;
-    std::uniform_real_distribution<double> urand(0.0, 1.0);
-    if (urand(mt) <0) {
-        // 不 sort：保持 parts_sorted 原顺序；pairs 给一个默认初始化（避免后续使用时报空/未定义）
-        pairs.reserve(parts_sorted.size());
-        for (size_t i = 0; i < parts_sorted.size(); ++i) {
-            PairInfo info;
-            // info.rectangles 默认空即可；如需默认包含自身，可 push_back(parts_sorted[i])
-            info.position = 0;
-            pairs.emplace(static_cast<int>(i), std::move(info));
-        }
-    } else {
-        // 正常：LLM 排序/配对逻辑（假设会在函数内对 parts_sorted 做处理）
-        pairs = Sort_by_LLM(parts_sorted, binSize, mt, method);
-    }
-
-    if (destroy_num <= 0) destroy_num = 1;
-
-    std::vector<Bin> bins;
-    bins.reserve(std::min<int>(destroy_num, (int)parts.size()));
-    bins.push_back(Bin{});
-
-    std::vector<std::vector<Rect>> freeRects;
-    freeRects.reserve(bins.capacity());
-    freeRects.push_back({ Rect{0,0,binSize.w,binSize.h} });
-
-    int j = 0;
-    std::uniform_int_distribution<int> algoDist(0, 3);
-    int method_ = algoDist(mt);
-    for (; j < (int)parts_sorted.size(); ++j) {
-        const Rect& item = parts_sorted[j];
-        bool placed = false;
-
-        for (size_t k = 0; k < bins.size(); ++k) {
-            vector<Rect> pos = Insert_by_LLM(item.w, item.h, freeRects[k], mt, pairs[j],method_);
-            if (pos[0].h != 0) {
-                for(int i=0;i<pos.size();i++){
-                    bins[k].rects.push_back(pos[i]);
-                }
-                placed = true;
-                break;
-            }
-        }
-
-        if (!placed) {
-            if ((int)bins.size() >= destroy_num) {
-                break; // 达到 bin 上限且放不下：停止
-            }
-            // 新开一个 bin 再放
-            bins.push_back(Bin{});
-            freeRects.push_back({ Rect{0,0,binSize.w,binSize.h} });
-
-            vector<Rect> pos = Insert_by_LLM(item.w, item.h, freeRects.back(), mt, pairs[j],method_);
-            if (pos[0].h == 0) {
-                // 理论上不应发生（新 bin 也放不下），这里直接停止
-                break;
-            }
-            for(int i=0;i<pos.size();i++){
-                bins.back().rects.push_back(pos[i]);
-            }
-        }
-    }
-
-    // score1：未装入面积
-    double leftover = 0.0;
-    for (int k = j; k < (int)parts.size(); ++k) {
-        leftover += parts[k].w * parts[k].h;
-    }
-
-    // score2：最后一个 bin 的面积（用来打平）
-    double lastBinArea = 0.0;
-    if (!bins.empty()) {
-        double minArea = std::numeric_limits<double>::infinity();
-        for (const auto& b : bins) {
-            if (b.rects.empty()) continue;              // 若仍希望跳过空 bin（推荐，否则最小可能变成 0）
-            const double a = sumArea(b.rects);
-            if (a < minArea) minArea = a;
-        }
-        if (minArea != std::numeric_limits<double>::infinity())
-            lastBinArea = minArea;                      // 这里就是“最小的那个”
-    }
-
-    out.bins   = std::move(bins);
-    out.score1 = leftover;
-    out.score2 = lastBinArea;
-    return out;
-}
-// ==== LLM_SORT_BEGIN ====
-
-std::unordered_map<int, PairInfo> Sort_by_LLM(std::vector<Rect>& parts_sorted, const Rect& binSize, std::mt19937& mt, int method) {
-    std::unordered_map<int, PairInfo> pairs;
-    // --- Algorithm 0: Area sort, pair smallest horizontally where fits ---
-    auto algo_area_pair_smallest = [&](std::vector<Rect>& rects, std::unordered_map<int, PairInfo>& out_pairs) {
-        std::sort(rects.begin(), rects.end(), cmpArea);
-        // Pair smallest (back of sorted) horizontally if they fit
-        std::vector<bool> paired(rects.size(), false);
-        std::vector<Rect> out_rects;
-        std::vector<PairInfo> pairinfos;
-        // Pair from back (smallest)
-        int n = rects.size();
-        int left = 0, right = n-1;
-        while (left <= right) {
-            if (left == right) {
-                // Only one left unpaired
-                PairInfo info;
-                info.rectangles = {rects[left]};
-                info.position = -1;
-                out_rects.push_back(rects[left]);
-                pairinfos.push_back(info);
-                left++;
-            } else {
-                // Try to pair rects[right] and rects[right-1] horizontally
-                double wsum = rects[right].w + rects[right-1].w;
-                double hmax = std::max(rects[right].h, rects[right-1].h);
-                if (wsum <= binSize.w && hmax <= binSize.h) {
-                    Rect comb = {0,0,wsum,hmax};
-                    PairInfo info;
-                    info.rectangles = {rects[right-1], rects[right]};
-                    info.position = 0; // horizontal
-                    out_rects.push_back(comb);
-                    pairinfos.push_back(info);
-                    right -= 2;
-                } else {
-                    // Only pair rects[right] as single
-                    PairInfo info;
-                    info.rectangles = {rects[right]};
-                    info.position = -1;
-                    out_rects.push_back(rects[right]);
-                    pairinfos.push_back(info);
-                    right -= 1;
-                }
-            }
-        }
-        parts_sorted = out_rects;
-        for (int i = 0; i < pairinfos.size(); ++i) {
-            out_pairs[i] = pairinfos[i];
-        }
-    };
-    // --- Algorithm 1: Long side sort, pair for best bounding box compactness (horizontal or vertical) ---
-    auto algo_longside_compactpair = [&](std::vector<Rect>& rects, std::unordered_map<int, PairInfo>& out_pairs) {
-        std::sort(rects.begin(), rects.end(), cmpLongSide);
-        std::vector<bool> used(rects.size(), false);
-        std::vector<Rect> out_rects;
-        std::vector<PairInfo> pairinfos;
-        for (int i = 0; i < (int)rects.size(); ++i) {
-            if (used[i]) continue;
-            double best_area = std::numeric_limits<double>::max();
-            int best_j = -1, best_pos = 0;
-            Rect best_bbox = {0,0,0,0};
-            for (int j = i+1; j < (int)rects.size(); ++j) {
-                if (used[j]) continue;
-                // Try horizontal pair
-                double w_h = rects[i].w + rects[j].w;
-                double h_h = std::max(rects[i].h, rects[j].h);
-                if (w_h <= binSize.w && h_h <= binSize.h) {
-                    double area = w_h * h_h;
-                    if (area < best_area) {
-                        best_area = area;
-                        best_j = j;
-                        best_pos = 0;
-                        best_bbox = {0,0,w_h,h_h};
-                    }
-                }
-                // Try vertical pair
-                double w_v = std::max(rects[i].w, rects[j].w);
-                double h_v = rects[i].h + rects[j].h;
-                if (w_v <= binSize.w && h_v <= binSize.h) {
-                    double area = w_v * h_v;
-                    if (area < best_area) {
-                        best_area = area;
-                        best_j = j;
-                        best_pos = 1;
-                        best_bbox = {0,0,w_v,h_v};
-                    }
-                }
-            }
-            if (best_j != -1) {
-                used[i] = used[best_j] = true;
-                PairInfo info;
-                info.rectangles = {rects[i], rects[best_j]};
-                info.position = best_pos;
-                out_rects.push_back(best_bbox);
-                pairinfos.push_back(info);
-            } else {
-                used[i] = true;
-                PairInfo info;
-                info.rectangles = {rects[i]};
-                info.position = -1;
-                out_rects.push_back(rects[i]);
-                pairinfos.push_back(info);
-            }
-        }
-        parts_sorted = out_rects;
-        for (int i = 0; i < pairinfos.size(); ++i) {
-            out_pairs[i] = pairinfos[i];
-        }
-    };
-    // --- Algorithm 2: Shortest side sort, pair same height or same width where fits ---
-    auto algo_shortside_samesizepair = [&](std::vector<Rect>& rects, std::unordered_map<int, PairInfo>& out_pairs) {
-        std::sort(rects.begin(), rects.end(), cmpShortSide);
-        std::vector<bool> paired(rects.size(), false);
-        std::vector<Rect> out_rects;
-        std::vector<PairInfo> pairinfos;
-        int n = rects.size();
-        for (int i=0; i<n; ++i) {
-            if (paired[i]) continue;
-            bool madepair = false;
-            for (int j=i+1; j<n; ++j) {
-                if (paired[j]) continue;
-                // Horizontal (if exact same height)
-                if (std::abs(rects[i].h-rects[j].h)<1e-7 && rects[i].w + rects[j].w <= binSize.w) {
-                    Rect comb = {0,0,rects[i].w+rects[j].w, rects[i].h};
-                    PairInfo info;
-                    info.rectangles = {rects[i],rects[j]};
-                    info.position = 0;
-                    out_rects.push_back(comb);
-                    pairinfos.push_back(info);
-                    paired[i]=paired[j]=true;
-                    madepair = true;
-                    break;
-                }
-                // Vertical (if exact same width)
-                if (std::abs(rects[i].w-rects[j].w)<1e-7 && rects[i].h + rects[j].h <= binSize.h) {
-                    Rect comb = {0,0,rects[i].w, rects[i].h+rects[j].h};
-                    PairInfo info;
-                    info.rectangles = {rects[i],rects[j]};
-                    info.position = 1;
-                    out_rects.push_back(comb);
-                    pairinfos.push_back(info);
-                    paired[i]=paired[j]=true;
-                    madepair = true;
+        int type = 1 - (points.size() == 4 &&
+                        (check(points[0], points[1], points[2]) && check(points[1], points[2], points[3]) &&
+                         check(points[2], points[3], points[0])));
+
+        bool rotate_bool = false;
+        int rotate_degree = 0;
+        vector<int> rotationDegrees;
+        bool feasibleflag = false;
+        for (int j = 0; j < root_group["items"][i]["rotate"].size(); j++) {
+            rotationDegrees.push_back(root_group["items"][i]["rotate"][j].asInt());
+            for (int k = 0; k < bins.size(); k++) {
+                if ((-x_min + x_max) <= bins[k]->width and (-y_min + y_max) <= bins[k]->height) {
+                    feasibleflag = true;
                     break;
                 }
             }
-            if (!madepair) {
-                PairInfo info;
-                info.rectangles = {rects[i]};
-                info.position = -1;
-                out_rects.push_back(rects[i]);
-                pairinfos.push_back(info);
-                paired[i]=true;
+
+            if (root_group["items"][i]["rotate"][j].asInt() == 90 ||
+                root_group["items"][i]["rotate"][j].asInt() == 270) {
+                for (int k = 0; k < bins.size(); k++) {
+                    if ((-x_min + x_max) <= bins[k]->height and (-y_min + y_max) <= bins[k]->width) {
+                        feasibleflag = true;
+                        break;
+                    }
+                }
+                rotate_bool = true;
+                rotate_degree = root_group["items"][i]["rotate"][j].asInt();
+                break;
             }
         }
-        parts_sorted = out_rects;
-        for (int i = 0; i < pairinfos.size(); ++i) {
-            out_pairs[i] = pairinfos[i];
+        if (feasibleflag == false) {
+            continue;
         }
-    };
-
-    int select_method;
-    if (method >= 0 && method <=2)
-        select_method = method;
-    else {
-        std::uniform_int_distribution<int> dist(0,2);
-        select_method = dist(mt);
+//        if (root_group["items"][i]["BackFrontPriority"].asBool() == false) {
+//            continue;
+//        }
+        Part_Ptr part_(new amopt_pack::Part());
+        part_->Input(y_max - y_min,
+                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
+                     false,
+                     false, false, rotate_degree, type);
+//            part_->Input(y_max - y_min,
+//                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, rotationDegrees, root_group["items"][i]["id"].asString(),
+//                     false,
+//                         root_group["items"][i]["smallItem"].asBool(), false, 0, type);
+//        part_->Input(y_max - y_min,
+//                     x_max - x_min, polygonarea(points), points, {x_min, x_max, y_min, y_max}, {0,90,  180,270},
+//                     root_group["items"][i]["id"].asString(),
+//                     root_group["items"][i]["BackFrontPriority"].asBool(),
+//                     root_group["items"][i]["smallItem"].asBool(), true, 90, type);
+        parts.push_back(part_);
+        points.clear();
+        if (part_->smallitem) {
+            num_small += 1;
+        }
     }
-    std::vector<Rect> input_copy = parts_sorted;
-    std::unordered_map<int, PairInfo> out_pairs;
-    if (select_method == 0) {
-        algo_area_pair_smallest(input_copy, out_pairs);
-    } else if (select_method == 1) {
-        algo_longside_compactpair(input_copy, out_pairs);
-    } else {
-        algo_shortside_samesizepair(input_copy, out_pairs);
+    double area=0;
+    for(int i=0;i<parts.size();i++){
+        area=area+parts[i]->area;
     }
-    parts_sorted = input_copy;
-    pairs = out_pairs;
-    return pairs;
+    std::cout << area << std::endl;
+    ratio = (num_small + 0.0) / (parts.size());
+    std::cout << ratio << std::endl;
+    std::cout <<"backnum="<< partnum << std::endl;
+    solution.ratio = ratio;
+//    if (squareparts.size() != 0) {
+//        ratio = (num_small + 0.0) / (squareparts.size());
+//        solution.ratio = ratio;
+//    } else {
+//        solution.ratio = 0;
+//    }
+    configure = amopt_pack::Configure(root_group["prameters"]["remnantsSet"]["area"].asDouble(),
+                                      root_group["prameters"]["remnantsSet"]["externSpace"].asDouble(),
+                                      root_group["prameters"]["remnantsSet"]["height"].asDouble(),
+                                      root_group["prameters"]["remnantsSet"]["width"].asDouble(),
+                                      root_group["prameters"]["surplusDir"].asBool(),
+                                      root_group["prameters"]["timeLimit"].asInt());
+//    solution.junyun = root_group["prameters"]["uniform"].asBool();
+    solution.junyun = false;
+    return Error::INPUT_FORMAT_ERROR;
 }
 
-// ==== LLM_SORT_END ====
-// ==== LLM_PLACE_BEGIN ====
+void amopt_pack::CarvingMachine::combination() {
+    int successnum = 0;
+    int successnum_ = 0;
+    std::cout << "combine" << std::endl;
+    double sumwaste = 0;
+    double sumrect = 0;
+    long int totaltime=0;
+    for (int i_ = 0; i_ <= 1; i_++) {
+        Part_Ptr_V *tempParts = (i_ == 0) ? &backparts : &notbackparts;
+        vector<int> usedlist;
+        for (int j_ = 1; j_ <=3; j_++) {
 
-Rect FindPosition_by_LLM(double width, double height, std::vector<Rect> freeRectangles, std::mt19937& mt, int method) {
-    Rect node{0,0,0,0};
 
-    // Method 0: Best Short Side Fit  
-    auto best_short_side_fit = [&]() -> Rect {
-        Rect bestNode{0,0,0,0};
-        double bestShortSideFit = std::numeric_limits<double>::max();
-        double bestLongSideFit = std::numeric_limits<double>::max();
-        std::uniform_real_distribution<double> dt(0.0, 1.0);
-        bool bestFound = false;
-        for(const auto& fr : freeRectangles) {
-            if(fr.w >= width && fr.h >= height) {
-                double leftoverHoriz = std::abs(fr.w - width);
-                double leftoverVert  = std::abs(fr.h - height);
-                double shortSideFit  = std::min(leftoverHoriz, leftoverVert);
-                double longSideFit   = std::max(leftoverHoriz, leftoverVert);
-                if (shortSideFit < bestShortSideFit) {
-                    bestShortSideFit = shortSideFit;
-                    bestLongSideFit  = longSideFit;
-                    bestNode = Rect{fr.x, fr.y, width, height};
-                    bestFound = true;
-                } else if (shortSideFit == bestShortSideFit) {
-                    if (longSideFit < bestLongSideFit) {
-                        bestLongSideFit = longSideFit;
-                        bestNode = Rect{fr.x, fr.y, width, height};
-                        bestFound = true;
-                    } else if (longSideFit == bestLongSideFit) {
-                        // Mild randomness in tie
-                        if(dt(mt) < 0.5) {
-                            bestNode = Rect{fr.x, fr.y, width, height};
-                            bestFound = true;
+            vector<int> squareIndexs;
+            for (int j = 0; j < (*tempParts).size(); j++) {
+                if (tempParts->operator[](j)->type == 0) squareIndexs.push_back(j);
+            }
+
+            vector<int> notsquareIndexs;
+            for (int j = 0; j < (*tempParts).size(); j++) {
+                if (tempParts->operator[](j)->type == j_) notsquareIndexs.push_back(j);
+
+            }
+
+            sort(notsquareIndexs.begin(), notsquareIndexs.end());
+            int notsquarenum = notsquareIndexs.size();
+            std::cout << "notsquarenum=" << notsquarenum << std::endl;
+            int totalSize = notsquarenum + squareIndexs.size();
+            if (j_ == 1) {
+                for (int i = 0; i < notsquarenum; i++) {
+                    double polygonarea = 0;
+                    int iIndex = notsquareIndexs[i];
+                    Part_Ptr partI = (*tempParts)[iIndex];
+                    float minxA = 100000, maxxA = -100000, minyA = 100000, maxyA = -100000;
+                    float minxATemp = 100000, maxxATemp = -100000, minyATemp = 100000, maxyATemp = -100000;
+                    for (int i1 = 0; i1 < partI->points.size(); i1++) {
+                        if (partI->points[i1][0] < minxATemp) minxATemp = partI->points[i1][0];
+                        if (partI->points[i1][0] > maxxATemp) maxxATemp = partI->points[i1][0];
+                        if (partI->points[i1][1] < minyATemp) minyATemp = partI->points[i1][1];
+                        if (partI->points[i1][1] > maxyATemp) maxyATemp = partI->points[i1][1];
+                    }
+
+                    sumwaste += (maxxATemp - minxATemp) * (maxyATemp - minyATemp);
+                    sumrect += (maxxATemp - minxATemp) * (maxyATemp - minyATemp);
+                    for (int j = 0; j < partI->points.size() - 1; j++) {
+                        polygonarea = polygonarea + (partI->points[j][0] * partI->points[j + 1][1] -
+                                                     partI->points[j][1] * partI->points[j + 1][0]);
+                    }
+                    polygonarea = polygonarea + (partI->points[partI->points.size() - 1][0] * partI->points[0][1] -
+                                                 partI->points[partI->points.size() - 1][1] * partI->points[0][0]);
+                    sumwaste = sumwaste - abs(polygonarea) / 2;
+                    if ((maxxATemp - minxATemp) * (maxyATemp - minyATemp) - abs(polygonarea) / 2 <
+                        0.05 * (maxxATemp - minxATemp) * (maxyATemp - minyATemp)) {
+                        successnum_ += 1;
+                    }
+                    std::cout << "sumwaste=" << sumwaste << std::endl;
+                }
+            }
+            std::cout << "sumrect=" << sumrect << std::endl;
+            for (int j = 0; j < squareIndexs.size(); j++) {
+                notsquareIndexs.push_back(squareIndexs[j]);
+            }
+            Graph G(2 * totalSize);
+            vector<double> cost;
+            map<int, vector<vector<float>>> marchingRet;
+            for (int i = 0; i < notsquarenum; i++) {
+                int iIndex = notsquareIndexs[i];
+                Part_Ptr partI = (*tempParts)[iIndex];
+                if (j_ == 1) {
+                    for (int j = i + 1; j < notsquarenum; j++) {
+                        int jIndex = notsquareIndexs[j];
+                        Part_Ptr partJ = (*tempParts)[jIndex];
+                        vector<vector<float>> ret = group_two_(partI->pointsCombine, partJ->points,
+                                                               partI->rotate_degrees, partJ->rotate_degrees,
+                                                               bins[0]->width, bins[0]->height,totaltime);
+                        if (ret.size() > 0 && ret[0][0] > 0) {
+                            G.AddEdge(i, j);
+                            cost.push_back(-int(ret[0][0]));
+                            G.AddEdge(i + totalSize, j + totalSize);
+                            cost.push_back(-int(ret[0][0]));
+                            marchingRet[i * 10000 + j] = ret;
                         }
                     }
                 }
-            }
-        }
-        if(!bestFound) return Rect{0,0,0,0};
-        return bestNode;
-    };
 
-    // Method 1: First Area Fit (requires area >= 2 * needed)
-    auto first_area_fit = [&]() -> Rect {
-        for(const auto& fr : freeRectangles) {
-            if(fr.w >= width && fr.h >= height) {
-                double freeArea = fr.w*fr.h;
-                double reqArea = width*height;
-                if(freeArea >= reqArea*2) { // area at least twice
-                    return Rect{fr.x, fr.y, width, height};
+                for (int j = 0; j < squareIndexs.size(); j++) {
+                    int squareIndex = squareIndexs[j];
+                    if (1.2 * (partI->size - partI->area) >= (*tempParts)[squareIndex]->size) {
+                        Part_Ptr partJ = (*tempParts)[squareIndex];
+                        vector<vector<float>> ret = group_two_(partI->pointsCombine, partJ->points,
+                                                               partI->rotate_degrees, partJ->rotate_degrees,
+                                                               bins[0]->width, bins[0]->height,totaltime);
+                        if (ret.size() > 0 && ret[0][0] > 0) {
+                            G.AddEdge(i, j + notsquarenum);
+                            cost.push_back(-int(ret[0][0]));
+                            G.AddEdge(i + totalSize, j + notsquarenum + totalSize);
+                            cost.push_back(-int(ret[0][0]));
+                            marchingRet[i * 10000 + j + notsquarenum] = ret;
+                        }
+                    }
+                }
+                G.AddEdge(i, i + totalSize);
+                cost.push_back(0);
+            }
+            for (int j = 0; j < squareIndexs.size(); j++) {
+                G.AddEdge(j + notsquarenum, j + notsquarenum + totalSize);
+                cost.push_back(0);
+            }
+            gettimeofday(&start, NULL);
+            Matching M(G);
+            pair<list<int>, double> solution = M.SolveMinimumCostPerfectMatching(cost);
+            gettimeofday(&end, NULL);
+            std::cout<<"caltime="<<(end.tv_usec - start.tv_usec)<<std::endl;
+            std::cout << "reduce" << solution.second /2<< std::endl;
+            list<int> matching(solution.first);
+            map<int, int> edge;
+            for (list<int>::iterator it = matching.begin(); it != matching.end(); it++) {
+                pair<int, int> e = G.GetEdge(*it);
+                if (e.first < totalSize and e.second < totalSize) {
+                    int min_index = min(e.first, e.second);
+                    int max_index = max(e.first, e.second);
+                    vector<vector<float>> ret = marchingRet[min_index * 10000 + max_index];
+
+                    Part_Ptr part_(new amopt_pack::Part());
+                    part_->width = ret[0][1];
+                    part_->height = ret[0][2];
+                    part_->size = ret[0][1] * ret[0][2];
+                    part_->type = j_ + 1;
+                    part_->area = 0;
+                    part_->rotate = true;
+                    part_->rotate_degrees = {0,90,180,270};
+
+                    if ((*tempParts)[notsquareIndexs[min_index]]->combineParts.size() == 0) {
+                        (*tempParts)[notsquareIndexs[min_index]]->transform.rotation = ret[0][5];
+                        (*tempParts)[notsquareIndexs[min_index]]->transform.xShift = ret[1][0];
+                        (*tempParts)[notsquareIndexs[min_index]]->transform.yShift = ret[1][1];
+                        (*tempParts)[notsquareIndexs[min_index]]->type = -1;
+                        part_->combineParts.push_back((*tempParts)[notsquareIndexs[min_index]]);
+                        part_->pointsCombine = {
+                                rotate_polygon((*tempParts)[notsquareIndexs[min_index]]->points, ret[0][5], 0, 0)};
+                        part_->area += (*tempParts)[notsquareIndexs[min_index]]->area;
+                    } else {
+                        (*tempParts)[notsquareIndexs[min_index]]->type = -1;
+                        for (int j = 0; j < (*tempParts)[notsquareIndexs[min_index]]->combineParts.size(); j++) {
+                            (*tempParts)[notsquareIndexs[min_index]]->combineParts[j]->transform.rotation = ret[0][5];
+                            (*tempParts)[notsquareIndexs[min_index]]->combineParts[j]->transform.xShift = ret[j + 1][0];
+                            (*tempParts)[notsquareIndexs[min_index]]->combineParts[j]->transform.yShift = ret[j + 1][1];
+                            part_->combineParts.push_back((*tempParts)[notsquareIndexs[min_index]]->combineParts[j]);
+                            part_->area += (*tempParts)[notsquareIndexs[min_index]]->combineParts[j]->area;
+                        }
+                        rotate_polygons_(part_->pointsCombine, ret[0][5]);
+                    }
+                    part_->area += (*tempParts)[notsquareIndexs[max_index]]->area;
+                    part_->combineParts.push_back((*tempParts)[notsquareIndexs[max_index]]);
+                    part_->pointsCombine.push_back(
+                            rotate_polygon((*tempParts)[notsquareIndexs[max_index]]->points, ret[0][6], ret[0][3],
+                                           ret[0][4]));
+                    (*tempParts).push_back(part_);
+
+                    (*tempParts)[notsquareIndexs[max_index]]->transform.rotation = ret[0][6];
+                    (*tempParts)[notsquareIndexs[max_index]]->transform.xShift = ret.back()[0];
+                    (*tempParts)[notsquareIndexs[max_index]]->transform.yShift = ret.back()[1];
+                    (*tempParts)[notsquareIndexs[max_index]]->type = -1;
+
+                    std::cout << min_index << "  " << max_index << "success" << std::endl;
+                    std::cout << (*tempParts)[notsquareIndexs[min_index]]->id1 << "   "
+                              << (*tempParts)[notsquareIndexs[max_index]]->id1 << std::endl;
+                    std::cout << "1111" << std::endl;
+                    successnum += 1;
+//                    if(min_index <notsquarenum){
+//                        vector<int>::iterator it;
+//                        it = find(usedlist.begin(), usedlist.end(), min_index);
+//                        if (it == usedlist.end())
+//                        {
+//                            successnum_+=1;
+//                            usedlist.push_back(min_index);
+//                        }
+//
+//                    }
+//                    if(max_index <notsquarenum and j_==1){
+//                        vector<int>::iterator it;
+//                        it = find(usedlist.begin(), usedlist.end(),max_index);
+//                        if (it == usedlist.end())
+//                        {
+//                            successnum_+=1;
+//                            usedlist.push_back(min_index);
+//                        }
+//                    }
                 }
             }
         }
-        // If none are at least double-area, fallback: just pick first fit
-        for(const auto& fr : freeRectangles) {
-            if(fr.w >= width && fr.h >= height) {
-                return Rect{fr.x, fr.y, width, height};
+    }
+    std::cout << "successnum=" << successnum << std::endl;
+    std::cout << "successnum_=" << successnum_ << std::endl;
+    std::cout<<"totaltime="<<totaltime<<std::endl;
+}
+
+Error amopt_pack::CarvingMachine::compute(Json::Value &result_list) {
+    std::cout << "compute start" << std::endl;
+        gettimeofday(&start, NULL);
+    firstpack();
+        gettimeofday(&end, NULL);
+//    std::cout<<"time="<<(end.tv_usec - start.tv_usec)<<std::endl;
+//    fstream f;
+//    f.open("record_.txt",ios::out|ios::app);
+//    f<<"initial_time="<<end.tv_usec - start.tv_usec<<std::endl;
+//    f.close();
+    optimize();
+    output(result_list);
+    Json::Value temp;
+//    temp["back_num"] = int(solution.bins_back.size());
+//    temp["unity"] = solution.getunity();
+    std::cout << "compute finish" << std::endl;
+    return COMPUTE_NO_ERROR;
+}
+
+void amopt_pack::CarvingMachine::firstpack() {
+    backparts = {};
+    notbackparts = {};
+    fitlist={};
+    std::vector<std::vector<std::vector<double> > > result_;
+    std::vector<amopt_pack::Bin> bins_ = {};
+    std::vector<amopt_pack::Part *> parts_ = {};
+    for (int i = 0; i < parts.size(); i++) {
+        if (parts[i]->Showbackfrontpriority()) {
+            backparts.push_back(parts[i]);
+        } else {
+            notbackparts.push_back(parts[i]);
+        }
+    }
+//    fstream f;
+//    f.open("result.txt",ios::out|ios::app);
+//    f<<"partsnum"<<backparts.size()+notbackparts.size() <<std::endl;
+//    f.close();
+//    gettimeofday(&start, NULL);
+//    combination();
+//    gettimeofday(&end, NULL);
+//    std::cout<<"time="<<(end.tv_sec - start.tv_sec)<<std::endl;
+//    exit(0);
+    gettimeofday(&start, NULL);
+    std::cout << backparts.size() << "  " << notbackparts.size() << std::endl;
+    Json::Value out;
+    out["items"]={};
+    int num=0;
+    for (int i=0;i<backparts.size();i++){
+        if(backparts[i]->type == -1) continue;
+        if(backparts[i]->rotate == false) continue;
+        out["items"][num]["BackFrontPriority"]=true;
+        out["items"][num]["centPt"][0]=backparts[i]->width/2;
+        out["items"][num]["centPt"][1]=backparts[i]->height/2;
+        num=num+1;
+    }
+    std::cout << num << std::endl;
+    for (int i=0;i<notbackparts.size();i++){
+        if(notbackparts[i]->type == -1) continue;
+            out["items"][num]["BackFrontPriority"]=false;
+        out["items"][num]["centPt"][0]=notbackparts[i]->width/2;
+        out["items"][num]["centPt"][1]=notbackparts[i]->height/2;
+        num=num+1;
+    }
+//    ofstream fout;
+//    fout.open("conbined.json");
+//    Json::StyledWriter writer1;
+//    fout << writer1.write(out) << std::endl;
+//    fout.close();
+//    exit(0);
+    double area_sum = 0;
+    for (int i = 0; i < backparts.size(); i++) {
+        if (backparts[i]->type == -1) continue;
+        area_sum += backparts[i]->size;
+    }
+    std::cout << "back area:" << area_sum << std::endl;
+
+    double notback_area_sum = 0;
+    for (int i = 0; i < notbackparts.size(); i++) {
+        if (notbackparts[i]->type == -1) continue;
+        notback_area_sum += notbackparts[i]->size;
+    }
+    std::cout << "notback area:" << notback_area_sum << std::endl;
+    std::cout << "total area:" << notback_area_sum + area_sum << std::endl;
+    for (int i = 0; i < backparts.size(); i++) {
+        for (int j = i; j < backparts.size(); j++) {
+            if (backparts[i]->size < backparts[j]->size) {
+                swap(backparts[i], backparts[j]);
             }
         }
-        return Rect{0,0,0,0};
-    };
+    }
+    for (int i = 0; i < backparts.size(); i++) {
+        if (backparts[i]->type == -1) continue;
+        bool check = false;
+        for (int j = 0; j < solution.bins_back.size(); j++) {
+            Part_Ptr_V parts = insert(solution.bins_back[j], backparts[i], mt, true, true);
+            if (parts.size() == 0) {
+                check = true;
+                break;
+            }
+        }
+        if (not check) {
+            Bin_Ptr p_bin(new amopt_pack::Bin(bins[solution.bins_back.size()]->width,
+                                              bins[solution.bins_back.size()]->height, true));
+            Part_Ptr_V parts = insert(p_bin, backparts[i], mt, false, true);
+            assert(parts.size() == 0);
+            solution.bins_back.push_back(p_bin);
+        }
+    }
+    double K=0;
+    K=0;
+    for(int i=0;i<solution.bins_back.size() ;i++){
+        K=K+solution.bins_back[i]->get_squarearea();
+    }
+    fitlist.push_back({K,0});
+    if (backparts.size() != 0) {
+        solution.update_area(0);
+        auto repair = Repair();
+        std::cout << "initial cost  " << solution.bins_back.size() << "  " << solution.getcost() << "  "
+                  << solution.cost << "  " << solution.getunity()
+                  << std::endl;
+        ofstream fout1;
+//        Json::Value result_list1;
+//        output(result_list1);
+//        fout1.open("output_back_begin.json");
+//        Json::StyledWriter writer1;
+//        fout1 << writer1.write(result_list1) << std::endl;
+//        fout1.close();
+        PackSolution best_solution = solution;
+        auto destroy0 = DestroyReconstruct(100, 0.10, 4);
+        auto destroy1 = DestroyInsertAverage(200);
+        auto destroy2 = DestroyInsertAverage(201);
+        gettimeofday(&start, NULL);
+        int num=0;
+        int index=0;
+        float timelimit=60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size());
+        while(true) {
+//            PackSolution temp_solution = solution;
+            gettimeofday(&end, NULL);
+            double t = static_cast<double>(end.tv_sec - start.tv_sec);
+            float frac_=0;
+            frac_=-t/timelimit*0.10+0.15;
+            if (num < 10000) destroy0 = DestroyReconstruct(100, frac_, 7);
+            else if (num < 20000) destroy0 = DestroyReconstruct(100, frac_, 5);
+            else destroy0 = DestroyReconstruct(100, frac_, 3);
+            if(num%10==0){
+                destroy1.destroy_solution(solution, mt);
+                repair.repair_solution(solution, mt);
+                if (solution.getcost() < best_solution.getcost()-0.000001) {
+                    double cost=solution.getcost();
+                    double bestcost=best_solution.getcost();
+                    numi+=1;
+                }
+            }
+            else if(num%10==1){
+                destroy2.destroy_solution(solution, mt);
+                repair.repair_solution(solution, mt);
+                if (solution.getcost() < best_solution.getcost()-0.000001) {
+                    double cost=solution.getcost();
+                    double bestcost=best_solution.getcost();
+                    numi+=1;
+                }
+            }
+            else {
+                destroy0.destroy_solution(solution, mt);
+                repair.repair_solution(solution, mt);
+                if (solution.getcost() < best_solution.getcost()-0.000001) {
+                    double cost=solution.getcost();
+                    double bestcost=best_solution.getcost();
+                    numr += 1;
+                }
+            }
+//            ofstream fout1;
+//            ofstream fout2;
+//            Json::Value result_list1;
+//            Json::Value result_list2;
+//            if ((solution.getcost() - best_solution.getcost())>1) {
+//                std::cout<<solution.getcost()<<","<<best_solution.getcost()<<std::endl;
+//                output(result_list1);
+//                fout1.open("output_1.json");
+//                Json::StyledWriter writer1;
+//                fout1 << writer1.write(result_list1) << std::endl;
+//                fout1.close();
+//                solution = best_solution;
+//                output(result_list2);
+//                fout2.open("output_2.json");
+//                Json::StyledWriter writer2;
+//                fout2 << writer2.write(result_list2) << std::endl;
+//                fout2.close();
+//                exit(0);
+//            }
+            if (solution.getcost() < best_solution.getcost()) {
+                best_solution = solution;
+            } else {
+                solution = best_solution;
+            }
 
-    // Method 2: Top-Left-Most (break ties by min unused perimeter)
-    auto top_left_most = [&]() -> Rect {
-        double bestY = std::numeric_limits<double>::max();
-        double bestX = std::numeric_limits<double>::max();
-        double bestUnusedPeri = std::numeric_limits<double>::max();
-        bool found = false;
-        Rect bestNode{0,0,0,0};
-        for(const auto& fr : freeRectangles) {
-            if(fr.w >= width && fr.h >= height) {
-                double unusedPeri = (fr.w-fr.x-width)+(fr.h-fr.y-height);
-                if(fr.y < bestY || (fr.y == bestY && fr.x < bestX)) {
-                    bestY = fr.y;
-                    bestX = fr.x;
-                    bestUnusedPeri = unusedPeri;
-                    bestNode = Rect{fr.x, fr.y, width, height};
-                    found = true;
-                } else if (fr.y == bestY && fr.x == bestX) {
-                    if(unusedPeri < bestUnusedPeri) {
-                        bestUnusedPeri = unusedPeri;
-                        bestNode = Rect{fr.x, fr.y, width, height};
-                        found = true;
+            gettimeofday(&end, NULL);
+            num+=1;
+//            float tem = 0.1 * exp(-(end.tv_sec - start.tv_sec + 0.0) / (60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size())) * 2);
+//            std::uniform_real_distribution<> dis(0, 1);
+//            float prob = dis(mt);
+//            if (temp_solution.getcost() < bestSolution.getcost()) {
+//                bestSolution = temp_solution;
+//                solution = temp_solution;
+//            }
+//            if (prob < exp((solution.getcost() - temp_solution.getcost()) / tem)) {
+//                solution = temp_solution;
+//            }
+            if (end.tv_sec - start.tv_sec >5*index) {
+                K=0;
+                for(int i=0;i<best_solution.bins_back.size() ;i++){
+                    K=K+best_solution.bins_back[i]->get_squarearea();
+                }
+                fitlist.push_back({K,0});
+                index=index+1;
+            }
+            if (end.tv_sec - start.tv_sec > (timelimit)) break;
+        }
+//        std::cout << solution.getareasum() << "  " << solution.getunity() << std::endl;
+        solution = best_solution;
+        std::cout << solution.getareasum() << "  " << solution.getunity() << std::endl;
+        int bin_num = solution.bins_back.size() ;
+        std::cout << "bin_back number:" << bin_num << std::endl;
+//        ofstream fout2;
+//        Json::Value result_list2;
+//        output(result_list2);
+//        fout2.open("output_back_over.json");
+//        Json::StyledWriter writer2;
+//        fout2 << writer2.write(result_list2) << std::endl;
+//        fout2.close();
+    }
+//    exit(0);
+    for (int i = 0; i < notbackparts.size(); i++) {
+        for (int j = i; j < notbackparts.size(); j++) {
+            if (notbackparts[i]->size < notbackparts[j]->size) {
+                swap(notbackparts[i], notbackparts[j]);
+            }
+        }
+    }
+    for (int i = 0; i < notbackparts.size(); i++) {
+        if (notbackparts[i]->type == -1) continue;
+        bool check = false;
+        for (int j = 0; j < solution.bins_back.size(); j++) {
+            Part_Ptr_V parts = insert(solution.bins_back[j], notbackparts[i], mt, true, true);
+            if (parts.size() == 0) {
+                check = true;
+                break;
+            }
+        }
+
+        if (not check) {
+            check = false;
+            for (int j = 0; j < solution.bins_normal.size(); j++) {
+                Part_Ptr_V parts = insert(solution.bins_normal[j], notbackparts[i], mt, true, true);
+                if (parts.size() == 0) {
+                    check = true;
+                    break;
+                }
+            }
+            if (check) continue;
+
+            Bin_Ptr p_bin(new amopt_pack::Bin(bins[solution.bins_back.size() + solution.bins_normal.size()]->width,
+                                              bins[solution.bins_back.size() + solution.bins_normal.size()]->height,
+                                              false));
+            Part_Ptr_V parts = insert(p_bin, notbackparts[i], mt, true, true);
+            if (parts.size() != 0) {
+                std::cout << notbackparts[i]->width << "  " << notbackparts[i]->height << std::endl;
+                std::cout << bins[solution.bins_back.size() + solution.bins_normal.size()]->width << "  "
+                          << bins[solution.bins_back.size() + solution.bins_normal.size()]->height << std::endl;
+                std::cout << "initial insert error" << std::endl;
+//                exit(0);
+            }
+            solution.bins_normal.push_back(p_bin);
+        }
+    }
+    solution.update_area(0);
+    solution.update_area(1);
+    std::cout << solution.getareasum() << "  " << solution.getunity() << std::endl;
+    bestSolution = solution;
+    gettimeofday(&end, NULL);
+    std::cout<<"time="<<(end.tv_usec - start.tv_usec)<<std::endl;
+
+//    for (int i = 0; i < solution.bins_normal.size(); i++) output_pack(solution.bins_normal[i]);
+
+    int bin_num = solution.bins_back.size() + solution.bins_normal.size();
+    std::cout << "bin number:" << bin_num << std::endl;
+    fstream f;
+    f.open("record_.txt",ios::out|ios::app);
+//    f<<"N="<<bin_num<<std::endl;
+    f.close();
+//    ofstream fout3;
+//    Json::Value result_list3;
+//    output(result_list3);
+//    fout3.open("output_normal_begin.json");
+//    Json::StyledWriter writer3;
+//    fout3 << writer3.write(result_list3) << std::endl;
+//    fout3.close();
+}
+void amopt_pack::CarvingMachine::move(mlpalns::DestroyMethod<PackSolution> &destroy,
+                                      mlpalns::RepairMethod<PackSolution> &repair,
+                                      std::mt19937 &mt, float tem, int &num) {
+    PackSolution temp_solution = solution;
+    destroy.destroy_solution(temp_solution, mt);
+    repair.repair_solution(temp_solution, mt);
+    std::uniform_real_distribution<> dis(0, 1);
+    Json::Value result_list1;
+    Json::Value result_list2;
+    float prob = dis(mt);
+    if (solution.getunity() < bestSolution.getunity()-0.00001) {
+        bestSolution = solution;
+        num+=1;
+    }
+    if (prob < exp((solution.getcost() - temp_solution.getcost()) / tem)) {
+        solution = temp_solution;
+    }
+//    if (solution.getcost() > temp_solution.getcost()-tem) {
+//        solution = temp_solution;
+//    }
+//    ofstream fout1;
+//    ofstream fout2;
+//    if ((solution.getcost() - temp_solution.getcost())>1) {
+//        std::cout<<solution.getcost()<<","<<temp_solution.getcost()<<std::endl;
+//        output(result_list1);
+//        fout1.open("output_1.json");
+//        Json::StyledWriter writer1;
+//        fout1 << writer1.write(result_list1) << std::endl;
+//        fout1.close();
+//        solution = temp_solution;
+//        output(result_list2);
+//        fout2.open("output_2.json");
+//        Json::StyledWriter writer2;
+//        fout2 << writer2.write(result_list2) << std::endl;
+//        fout2.close();
+//        exit(0);
+//    }
+}
+
+void amopt_pack::CarvingMachine::optimize() {
+    std::cout << "optimize start" << std::endl;
+    mt.seed(std::time(0u));
+//    mt.seed(3);
+    std::uniform_real_distribution<float> dt(0, 1);
+    double frac_1 = 0.15, frac_2 = 0.10, frac_3 = 0.05;
+
+    int num1 = 7, num2 = 5, num3 = 3 ;
+    float timelimit=60-60 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size());
+//    float timelimit=60;
+    auto repair = Repair();
+    //3类不同规模的重组
+    auto regroup00 = DestroyReconstruct(100, frac_1, num1);
+    auto regroup01 = DestroyReconstruct(100, frac_2, num2);
+    auto regroup02 = DestroyReconstruct(100, frac_3, num3);
+    auto regroup10 = DestroyReconstruct(101, frac_1, num1);
+    auto regroup11 = DestroyReconstruct(101, frac_2, num2);
+    auto regroup12 = DestroyReconstruct(101, frac_3, num3);
+    vector<DestroyReconstruct> regroups = {regroup00, regroup01, regroup02, regroup10, regroup11, regroup12};
+
+//    auto regrouplast0 = DestroyReconstruct(102, 0, num3);
+//    auto regrouplast1 = DestroyReconstruct(103, 0, num3);
+//    vector<DestroyReconstruct> regrouplasts = {regrouplast0, regrouplast1};
+
+    //2类平均面积插入
+    auto insertAverage0 = DestroyInsertAverage(200);
+    auto insertAverage1 = DestroyInsertAverage(201);
+    auto insertAverage2 = DestroyInsertAverage(202);
+    auto insertAverage3 = DestroyInsertAverage(203);
+    vector<DestroyInsertAverage> inserts = {insertAverage0, insertAverage1, insertAverage2, insertAverage3};
+
+    //1类根据unity rate1的插入
+    auto insertFill0 = DestroyInsertFill(302);
+    auto insertFill1 = DestroyInsertFill(305);
+    vector<DestroyInsertFill> insert_fills = {insertFill0, insertFill1};
+
+    //1类根据unity rate2的重组
+    auto regroup20 = DestroyReconstruct2(400);
+    auto regroup21 = DestroyReconstruct2(401);
+    vector<DestroyReconstruct2> regroup2 = {regroup20, regroup21};
+
+    //1类填充面积最小两个重组
+    auto regroup_last = DestroyReconstruct2(402);
+
+    //2类普通板插入正反面板
+    auto backinsert0 = DestroyBack(500);
+    auto backinsert1 = DestroyBack(501);
+    vector<DestroyBack> backs = {backinsert0, backinsert1};
+
+    int step = 0;
+    int index;
+    double last_cost = solution.getcost();
+    solution.update_rate(0);
+//    while ((double) (clock() - start) / CLOCKS_PER_SEC < 60*configure.timeLimit) {
+    float tem = 0.2;
+    int timeflag=0;
+    gettimeofday(&start, NULL);
+    int others=0;
+    int current_num=solution.bins_normal.size();
+    int current_time=0;
+    double total_time=0;
+    double K=0;
+    double K_=0;
+    int index_=0;
+    for(int i=0;i<bestSolution.bins_back.size() ;i++){
+        K=K+bestSolution.bins_back[i]->get_squarearea();
+    }
+    for(int i=0;i<bestSolution.bins_normal.size() ;i++){
+        K_=K_+bestSolution.bins_normal[i]->get_squarearea();
+    }
+    K_=K_+K;
+    fitlist.push_back({K,K_});
+    while (true) {
+//        break;
+        bool normal;
+        float back_ratio =
+                (solution.bins_back.size() )* solution.bins_back.size()/ (0.0 + solution.bins_back.size() + solution.bins_normal.size())/(0.0 + solution.bins_back.size() + solution.bins_normal.size());
+        if (dt(mt) < back_ratio) normal = false;
+        else normal = true;
+        double t = static_cast<double>(end.tv_sec - start.tv_sec); // seconds
+        float frac_=0;
+        frac_=-t/timelimit*0.10+0.15;
+        auto regroupbins1=DestroyReconstruct(101, frac_, 3);
+        auto regroupbins0 = DestroyReconstruct(100, frac_, 3);
+        if (normal == true){
+            move(regroupbins1, repair, mt, tem,numr);
+        }
+        else{
+            move(regroupbins0, repair, mt, tem,numr);
+        }
+        if (step % 10 == 0) {
+            (dt(mt) < 0.5) ? index = 0 : index = 1;
+            move(inserts[normal * 2 + index], repair, mt, tem,numi);
+        }
+
+        if (step % 10 == 0) {
+            move(insert_fills[normal], repair, mt, tem,numi); // rate1
+        }
+        if (step % 300 == 0) {
+            move(regroup_last, repair, mt, tem,numr);
+        }
+        if (false || step % 20 == 19) {
+            (dt(mt) < 0.5) ? index = 0 : index = 1;
+            move(backs[index], repair, mt, tem,others);
+        }
+        if (step % 300 == 299) {
+            move(regroup_last, repair, mt, tem,numr);
+        }
+        if (step % 500 == 0) {
+//            std::cout << step << "  " << tem << "  " << solution.getunity()
+//                      << "  " << solution.bins_back.size() << std::endl;
+            if (bestSolution.getcost() != last_cost) {
+                last_cost = bestSolution.getcost();
+                regroups[normal * 3 + 2].set(0.0, 2);
+                solution.update_rate(0);
+            } else {
+                solution.update_rate(1);
+                regroups[normal * 3 + 2].set(0.0, 3);
+            }
+        }
+        if (end.tv_sec - start.tv_sec > (60 * timeflag)){
+            std::cout << step << "  " << tem << "  " << solution.getunity()<<std::endl;
+            timeflag+=1;
+        }
+        step += 1;
+        gettimeofday(&end, NULL);
+//        if(solution.getunity()<5){
+//            std::cout<<(end.tv_usec - start.tv_usec)<<std::endl;
+//        }
+        if (end.tv_sec - start.tv_sec >5*index_) {
+            K=0;
+            for(int i=0;i<bestSolution.bins_back.size() ;i++){
+                K=K+bestSolution.bins_back[i]->get_squarearea();
+            }
+            K_=0;
+            for(int i=0;i<bestSolution.bins_normal.size() ;i++){
+                K_=K_+bestSolution.bins_normal[i]->get_squarearea();
+            }
+            K_=K_+K;
+            fitlist.push_back({K,K_});
+            index_=index_+1;
+        }
+        if (end.tv_sec - start.tv_sec > (timelimit)) {
+            fstream f;
+            f.open("result.txt",ios::out|ios::app);
+            f<<"numr="<<numr<<std::endl;
+            f<<"numi="<<numi<<std::endl;
+            if(numi>0){
+                f<<"ratio="<<float(numr)/float(numi)<<std::endl;
+            }
+            f<<"K="<<solution.getunity()<<std::endl;
+            f.close();
+            numr=0;numi=0;
+        }
+        if(current_num>solution.bins_normal.size()){
+            current_time=(end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec);
+            current_num=solution.bins_normal.size();
+        }
+        if (end.tv_sec - start.tv_sec > timelimit) break;//终点到0.05
+        tem = 0.1 * exp(-(end.tv_sec - start.tv_sec + 0.0) / (timelimit) * 2);
+//        tem = 0.07 * (1-(end.tv_sec - start.tv_sec + 0.0) / (60-60*5 *backparts.size()*backparts.size()/(backparts.size()+notbackparts.size())/(backparts.size()+notbackparts.size()))) ;
+
+    }
+    int bin_num = solution.bins_back.size() + solution.bins_normal.size();
+    std::cout << "bin number:" << bin_num << std::endl;
+    fstream f;
+    f.open("record_.txt",ios::out|ios::app);
+    f<<solution.getunity()<<std::endl;
+    f.close();
+}
+
+void amopt_pack::CarvingMachine::output(Json::Value &result_list) {
+//    result_list["back_num"] = int(bestSolution.bins_back.size());
+//    result_list["unity"] = bestSolution.getunity();
+//    return;
+//    solution = bestSolution;
+
+    bool flag;
+//    int smallitemnum = 0;
+//    for (int i = 0; i < solution.bins_normal.size(); i++) {
+//        for(int j = 0; j < solution.bins_normal[i]->parts.size(); j++)
+//        {
+//            if (solution.bins_back[i]->parts[j]->smallitem == true) {
+//                smallitemnum++;
+//            }
+//        }
+//    }
+//    std::cout << "output back=" << smallitemnum << std::endl;
+//    std::cout << "output back=" << solution.bins_back.size() << std::endl;
+
+
+    int smallitemnum = 0;
+    float sumarea=0;
+    for (int i = 0; i < solution.bins_back.size(); i++) {
+        for(int j = 0; j < solution.bins_back[i]->parts.size(); j++) {
+            sumarea+=solution.bins_back[i]->parts[j]->size;
+        }
+    }
+    for (int i = 0; i < solution.bins_normal.size(); i++) {
+        for(int j = 0; j < solution.bins_normal[i]->parts.size(); j++) {
+            sumarea+=solution.bins_normal[i]->parts[j]->size;
+        }
+    }
+    std::cout << "output area=" << sumarea << std::endl;
+    for (int i = 0; i < solution.bins_back.size(); i++) {
+        result_list["solutions"][i]["id"] = "";
+        int j = 0;
+        output_pack(solution.bins_back[i]);
+        int j0 = 0;
+        int index = 0;
+        vector<int> list;
+        vector<int>::iterator it;
+        list.clear();
+        for (j0 = 0; j0 < solution.bins_back[i]->parts.size(); j0++) {
+            index = -1;
+            for (int j2 = 0; j2 < solution.bins_back[i]->parts.size(); j2++) {
+                it = std::find(list.begin(), list.end(), j2);
+                if (it == list.end()) {
+                    if (index == -1) index = j2;
+                    else if (solution.bins_back[i]->parts[j2]->rect.x < solution.bins_back[i]->parts[index]->rect.x) {
+                        index = j2;
                     }
                 }
             }
+            double distan = solution.bins_back[i]->parts[index]->rect.x;
+            list.push_back(index);
+            for (int j2 = 0; j2 < solution.bins_back[i]->parts.size(); j2++) {
+                if ((solution.bins_back[i]->parts[j2]->rect.x + solution.bins_back[i]->parts[j2]->rect.width) <=
+                    solution.bins_back[i]->parts[index]->rect.x and
+                    solution.bins_back[i]->parts[j2]->rect.y <
+                    (solution.bins_back[i]->parts[index]->rect.y + solution.bins_back[i]->parts[index]->rect.height) and
+                    (solution.bins_back[i]->parts[j2]->rect.y + solution.bins_back[i]->parts[j2]->rect.height) >
+                    solution.bins_back[i]->parts[index]->rect.y) {
+                    distan = min(distan, solution.bins_back[i]->parts[index]->rect.x -
+                                         solution.bins_back[i]->parts[j2]->rect.x -
+                                         solution.bins_back[i]->parts[j2]->rect.width);
+                }
+            }
+            solution.bins_back[i]->parts[index]->rect.x = solution.bins_back[i]->parts[index]->rect.x - distan;
         }
-        if(!found) return Rect{0,0,0,0};
-        return bestNode;
-    };
+        list.clear();
+        for (j0 = 0; j0 < solution.bins_back[i]->parts.size(); j0++) {
+            index = -1;
+            for (int j2 = 0; j2 < solution.bins_back[i]->parts.size(); j2++) {
+                it = std::find(list.begin(), list.end(), j2);
+                if (it == list.end()) {
+                    if (index == -1) index = j2;
+                    else if (solution.bins_back[i]->parts[j2]->rect.y < solution.bins_back[i]->parts[index]->rect.y) {
+                        index = j2;
+                    }
+                }
+            }
+            double distan = solution.bins_back[i]->parts[index]->rect.y;
+            list.push_back(index);
+            for (int j2 = 0; j2 < solution.bins_back[i]->parts.size(); j2++) {
+                if ((solution.bins_back[i]->parts[j2]->rect.y + solution.bins_back[i]->parts[j2]->rect.height) <=
+                    solution.bins_back[i]->parts[index]->rect.y and
+                    solution.bins_back[i]->parts[j2]->rect.x <
+                    (solution.bins_back[i]->parts[index]->rect.x + solution.bins_back[i]->parts[index]->rect.width) and
+                    (solution.bins_back[i]->parts[j2]->rect.x + solution.bins_back[i]->parts[j2]->rect.width) >
+                    solution.bins_back[i]->parts[index]->rect.x) {
+                    distan = min(distan, solution.bins_back[i]->parts[index]->rect.y -
+                                         solution.bins_back[i]->parts[j2]->rect.y -
+                                         solution.bins_back[i]->parts[j2]->rect.height);
+                }
+            }
+            solution.bins_back[i]->parts[index]->rect.y = solution.bins_back[i]->parts[index]->rect.y - distan;
+        }
+        for (int partIndex = 0; partIndex < solution.bins_back[i]->parts.size(); partIndex += 1) {
+            Part_Ptr part = solution.bins_back[i]->parts[partIndex];
+            if (part->type == 0 || part->type == 1) {
+                result_list["solutions"][i]["items"][j]["id"] = part->id1;
+                result_list["solutions"][i]["items"][j]["centPt"][0] = part->rect.x + part->rect.width / 2;
+                result_list["solutions"][i]["items"][j]["centPt"][1] = part->rect.y + part->rect.height / 2;
+                result_list["solutions"][i]["items"][j]["rotate"] = (part->width == part->rect.width &&
+                                                                     part->height == part->rect.height) ? 0
+                                                                                                        : part->rotate_degree;
+                j++;
+            } else {
+                std::cout << "size " << part->combineParts.size() << std::endl;
+                for (auto tempPart: part->combineParts) {
+                    result_list["solutions"][i]["items"][j]["id"] = tempPart->id1;
+                    result_list["solutions"][i]["items"][j]["centPt"][0] =
+                            part->rect.x + part->rect.width / 2 + tempPart->transform.xShift;
+                    result_list["solutions"][i]["items"][j]["centPt"][1] =
+                            part->rect.y + part->rect.height / 2 + tempPart->transform.yShift;
+                    result_list["solutions"][i]["items"][j]["rotate"] = tempPart->transform.rotation;
+                    j++;
+                }
+            }
+            for (int k = partIndex + 1; k < solution.bins_back[i]->parts.size(); k++) {
+                Rect a = part->rect;
+                Rect b = solution.bins_back[i]->parts[k]->rect;
+                if (!(a.x + a.width <= b.x + 0.1 ||
+                      b.x + b.width <= a.x + 0.1 ||
+                      a.y + a.height <= b.y + 0.1 ||
+                      b.y + b.height <= a.y + 0.1) ||
+                    a.x <= -0.1 ||
+                    a.y <= -0.1 ||
+                    a.height <= 0.1){
+                    std::cout << "error overlap" << solution.getunity() << "  " << solution.ratio << std::endl;
+                    output_pack(solution.bins_back[i]);
+                }
+            }
+        }
+    }
 
-    int select_method = method;
-    if(select_method < 0 || select_method > 2) {
-        std::uniform_int_distribution<int> md(0,2);
-        select_method = md(mt);
+    std::cout << "output normal" << std::endl;
+    int lastbin = solution.calculate_last_fill(0, 1);
+    Bin_Ptr lastb;
+    if (lastbin != -1) {
+        last_insert(solution.bins_normal, lastbin, mt);
+        if (solution.bins_normal[lastbin]->parts.size() == 0) {
+            solution.bins_normal.erase(solution.bins_normal.begin() + lastbin);
+            lastbin = -1;
+        }
     }
-    if(select_method == 0) {
-        node = best_short_side_fit();
-    } else if(select_method == 1) {
-        node = first_area_fit();
-    } else if(select_method == 2) {
-        node = top_left_most();
+    std::cout << "lastBin  " << lastbin << std::endl;
+    for (int i = 0; i < solution.bins_normal.size(); i++) {
+        int j = 0;
+        if (i == lastbin) {
+            if (!output_pack_last_new(solution.bins_normal[i], 1, false)) {
+                std::cout << "lastBin defeat" << std::endl;
+                output_pack(solution.bins_normal[i]);
+            }
+            std::cout << "lastBin success" << std::endl;
+        } else output_pack(solution.bins_normal[i]);
+
+        int j0 = 0;
+        int index = 0;
+        vector<int> list;
+        vector<int>::iterator it;
+        list.clear();
+        for (j0 = 0; j0 < solution.bins_normal[i]->parts.size(); j0++) {
+            index = -1;
+            for (int j2 = 0; j2 < solution.bins_normal[i]->parts.size(); j2++) {
+                it = std::find(list.begin(), list.end(), j2);
+                if (it == list.end()) {
+                    if (index == -1) index = j2;
+                    else if (solution.bins_normal[i]->parts[j2]->rect.x <
+                             solution.bins_normal[i]->parts[index]->rect.x) {
+                        index = j2;
+                    }
+                }
+
+            }
+            double distan = solution.bins_normal[i]->parts[index]->rect.x;
+            list.push_back(index);
+            for (int j2 = 0; j2 < solution.bins_normal[i]->parts.size(); j2++) {
+                if ((solution.bins_normal[i]->parts[j2]->rect.x + solution.bins_normal[i]->parts[j2]->rect.width) <=
+                    solution.bins_normal[i]->parts[index]->rect.x and
+                    solution.bins_normal[i]->parts[j2]->rect.y < (solution.bins_normal[i]->parts[index]->rect.y +
+                                                                  solution.bins_normal[i]->parts[index]->rect.height) and
+                    (solution.bins_normal[i]->parts[j2]->rect.y + solution.bins_normal[i]->parts[j2]->rect.height) >
+                    solution.bins_normal[i]->parts[index]->rect.y) {
+                    distan = min(distan, solution.bins_normal[i]->parts[index]->rect.x -
+                                         solution.bins_normal[i]->parts[j2]->rect.x -
+                                         solution.bins_normal[i]->parts[j2]->rect.width);
+                }
+            }
+            solution.bins_normal[i]->parts[index]->rect.x = solution.bins_normal[i]->parts[index]->rect.x - distan;
+        }
+        list.clear();
+        for (j0 = 0; j0 < solution.bins_normal[i]->parts.size(); j0++) {
+            index = -1;
+            for (int j2 = 0; j2 < solution.bins_normal[i]->parts.size(); j2++) {
+                it = std::find(list.begin(), list.end(), j2);
+                if (it == list.end()) {
+                    if (index == -1) index = j2;
+                    else if (solution.bins_normal[i]->parts[j2]->rect.y <
+                             solution.bins_normal[i]->parts[index]->rect.y) {
+                        index = j2;
+                    }
+                }
+
+            }
+            double distan = solution.bins_normal[i]->parts[index]->rect.y;
+            list.push_back(index);
+            for (int j2 = 0; j2 < solution.bins_normal[i]->parts.size(); j2++) {
+                if ((solution.bins_normal[i]->parts[j2]->rect.y + solution.bins_normal[i]->parts[j2]->rect.height) <=
+                    solution.bins_normal[i]->parts[index]->rect.y and
+                    solution.bins_normal[i]->parts[j2]->rect.x < (solution.bins_normal[i]->parts[index]->rect.x +
+                                                                  solution.bins_normal[i]->parts[index]->rect.width) and
+                    (solution.bins_normal[i]->parts[j2]->rect.x + solution.bins_normal[i]->parts[j2]->rect.width) >
+                    solution.bins_normal[i]->parts[index]->rect.x) {
+                    distan = min(distan, solution.bins_normal[i]->parts[index]->rect.y -
+                                         solution.bins_normal[i]->parts[j2]->rect.y -
+                                         solution.bins_normal[i]->parts[j2]->rect.height);
+                }
+            }
+            solution.bins_normal[i]->parts[index]->rect.y = solution.bins_normal[i]->parts[index]->rect.y - distan;
+
+        }
+        result_list["solutions"][int(i + solution.bins_back.size())]["id"] = "";
+
+        j = 0;
+        for (int partIndex = 0; partIndex < solution.bins_normal[i]->parts.size(); partIndex += 1) {
+            Part_Ptr part = solution.bins_normal[i]->parts[partIndex];
+            if (part->type == 0 || part->type == 1) {
+                result_list["solutions"][int(i + solution.bins_back.size())]["items"][j]["id"] = part->id1;
+                result_list["solutions"][int(i + solution.bins_back.size())]["items"][j]["centPt"][0] =
+                        part->rect.x + part->rect.width / 2;
+                result_list["solutions"][int(i + solution.bins_back.size())]["items"][j]["centPt"][1] =
+                        part->rect.y + part->rect.height / 2;
+                result_list["solutions"][int(i + solution.bins_back.size())]["items"][j]["rotate"] = (part->width ==
+                                                                                                      part->rect.width &&
+                                                                                                      part->height ==
+                                                                                                      part->rect.height)
+                                                                                                     ? 0
+                                                                                                     : part->rotate_degree;
+                j++;
+            } else {
+                std::cout << "size " << part->combineParts.size() << std::endl;
+                for (auto tempPart: part->combineParts) {
+                    result_list["solutions"][int(i + solution.bins_back.size())]["items"][j]["id"] = tempPart->id1;
+                    result_list["solutions"][int(i + solution.bins_back.size())]["items"][j]["centPt"][0] =
+                            part->rect.x + part->rect.width / 2 + tempPart->transform.xShift;
+                    result_list["solutions"][int(i + solution.bins_back.size())]["items"][j]["centPt"][1] =
+                            part->rect.y + part->rect.height / 2 + tempPart->transform.yShift;
+                    result_list["solutions"][int(
+                            i + solution.bins_back.size())]["items"][j]["rotate"] = tempPart->transform.rotation;
+                    j++;
+                }
+            }
+            for (int k = partIndex + 1; k < solution.bins_normal[i]->parts.size(); k++) {
+                Rect a = part->rect;
+                Rect b = solution.bins_normal[i]->parts[k]->rect;
+                if (!(a.x + a.width <= b.x + 0.1 ||
+                      b.x + b.width <= a.x + 0.1 ||
+                      a.y + a.height <= b.y + 0.1 ||
+                      b.y + b.height <= a.y + 0.1) ||
+                    a.x <= -0.1 ||
+                    a.y <= -0.1 ||
+                    a.height <= 0.1) {
+                    std::cout << "error overlap" << solution.getunity() << "  " << solution.ratio << std::endl;
+                    output_pack(solution.bins_normal[i]);
+                    std::cout << i << std::endl;
+                    std::cout << a.x << " " << a.width << " " << a.y << " " << a.height << "\n";
+                    std::cout << b.x << " " << b.width << " " << b.y << " " << b.height;
+                }
+            }
+        }
     }
-    return node;
+    result_list["back_num"] = int(solution.bins_back.size());
+    result_list["unity"] = solution.getunity();
+    fstream f;
+    f.open("record.txt",ios::out|ios::app);
+//    f<<"N="<<solution.getunity()<<std::endl;
+    f<<solution.bins_normal.size()<<std::endl;
+    f.close();
+    for(int i=0;i<fitlist.size();i++){
+        result_list["fitlist"][i][0]=fitlist[i][0];
+        result_list["fitlist"][i][1]=fitlist[i][1];
+    }
 }
-
-// ==== LLM_PLACE_END ====
-std::vector<Rect> Insert_by_LLM(
-        double width,
-        double height,
-        std::vector<Rect>& freeRectangles,
-        std::mt19937& mt,
-        PairInfo pair,
-        int method
-) {
-    Rect newNode;
-    if (method==0){
-        newNode = FindPositionForNewNodeBestShortSideFit(width, height, freeRectangles, mt);
+Error amopt_pack::CarvingMachine::computeBRKGA(Json::Value &result_list) {
+    std::cout << "compute start" << std::endl;
+    gettimeofday(&start, NULL);
+//    firstpack();
+    gettimeofday(&end, NULL);
+//    std::cout<<"time="<<(end.tv_usec - start.tv_usec)<<std::endl;
+//    fstream f;
+//    f.open("record_.txt",ios::out|ios::app);
+//    f<<"initial_time="<<end.tv_usec - start.tv_usec<<std::endl;
+//    f.close();
+    optimizeBRKGA();
+    for(int i=0;i<fitlist.size();i++){
+        result_list["fitlist"][i][0]=fitlist[i][0];
+        result_list["fitlist"][i][1]=fitlist[i][1];
     }
-    else {
-        newNode = FindPosition_by_LLM(width, height, freeRectangles, mt,method);
-    }
-    if (newNode.h == 0) return {newNode};
-    if (pair.rectangles.size()>1){
-        Rect newNode_1;
-        Rect newNode_2;
-        for(int i=0;i<pair.rectangles.size();i++){
-            if(pair.position==0){
-                newNode_1=Rect{newNode.x,newNode.y,pair.rectangles[0].w,pair.rectangles[0].h};
-                newNode_2=Rect{newNode.x+pair.rectangles[0].w,newNode.y,pair.rectangles[1].w,pair.rectangles[1].h};
-            }
-            else{
-                newNode_1=Rect{newNode.x,newNode.y,pair.rectangles[0].w,pair.rectangles[0].h};
-                newNode_2=Rect{newNode.x,newNode.y+pair.rectangles[0].h,pair.rectangles[1].w,pair.rectangles[1].h};
-            }
-        }
-        for (size_t i = 0; i < freeRectangles.size(); ++i) {
-            if (SplitFreeNode(freeRectangles[i], newNode_1, freeRectangles)) {
-                freeRectangles.erase(freeRectangles.begin() + i);
-                --i; // 继续检查当前位置（因为 erase 使后续左移）
-            }
-        }
-        PruneFreeList(freeRectangles);
-        for (size_t i = 0; i < freeRectangles.size(); ++i) {
-            if (SplitFreeNode(freeRectangles[i], newNode_2, freeRectangles)) {
-                freeRectangles.erase(freeRectangles.begin() + i);
-                --i; // 继续检查当前位置（因为 erase 使后续左移）
-            }
-        }
-        PruneFreeList(freeRectangles);
-        return {newNode_1,newNode_2};
-    }
-    else{
-        for (size_t i = 0; i < freeRectangles.size(); ++i) {
-            if (SplitFreeNode(freeRectangles[i], newNode, freeRectangles)) {
-                freeRectangles.erase(freeRectangles.begin() + i);
-                --i; // 继续检查当前位置（因为 erase 使后续左移）
-            }
-        }
-        PruneFreeList(freeRectangles);
-        return {newNode};
-    }
-
-    // 这里不要反复调用 freeRectangles.size()（虽小，但免费优化）
+    Json::Value temp;
+//    temp["back_num"] = int(solution.bins_back.size());
+//    temp["unity"] = solution.getunity();
+    std::cout << "compute finish" << std::endl;
+    return COMPUTE_NO_ERROR;
 }
-// 结合 maxRectsSorts 的逻辑：遍历 6 种规则，选 (score1, score2) 最小
-std::vector<Bin> regroup_4(
-        std::vector<Rect> destroy_set,
-        bool* success_flag,
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt
-) {
-    if (success_flag) *success_flag = false;
-    if (destroy_set.empty()) return {};
-
-    std::vector<Bin> bestBins;
-    double bestScore1 = std::numeric_limits<double>::infinity();
-    double bestScore2 = std::numeric_limits<double>::infinity();
-
-    for (int rule = 0; rule < 5; ++rule) {
-        // 每个 rule 从原始 destroy_set 重新开始（避免被上一次排序污染）
-//        std::vector<Rect> parts = destroy_set;
-//
-//        switch (rule) {
-//            case 0: std::sort(parts.begin(), parts.end(), cmpArea); break;
-//            case 1: std::sort(parts.begin(), parts.end(), cmpPerimeter); break;
-//            case 3: std::sort(parts.begin(), parts.end(), cmpLongSide); break;
-//            case 4: std::sort(parts.begin(), parts.end(), cmpShortSide); break;
-//            case 2: break;
-////            default: std::shuffle(parts.begin(), parts.end(), mt); break; // rule 4/5
-//        }
-//
-//        // 注意：pack_with_order 内部会继续调用 Insert（Insert 可能用随机打平），会消耗 mt
-//        PackResult cand = pack_with_order(std::move(parts), binSize, destroy_num, mt);
-        std::vector<Rect> parts = destroy_set;
-        PackResult cand = pack_with_order_LLM(std::move(parts), binSize, destroy_num, mt,rule);
-
-        if (cand.score1 < bestScore1 || (cand.score1 == bestScore1 && cand.score2 < bestScore2)) {
-            bestScore1 = cand.score1;
-            bestScore2 = cand.score2;
-            bestBins = std::move(cand.bins);
+void amopt_pack::CarvingMachine::optimizeBRKGA() {
+    int num=parts.size();
+    int p=30*num;
+    int pm=0.15*p;
+    int pe=0.10*p;
+    float rou=0.7;
+    std::vector<float> gene;
+    std::vector<std::vector<float>> population;
+    std::vector<float> populationfitness;
+    float populationfitness_;
+    int maxiter=10000;
+    gettimeofday(&start, NULL);
+    population=initial(p,num);//初始化p
+    int index=0;
+    for(int i =0; i<maxiter; i++){
+        populationfitness=Decode(population);//论文中fitness，将population和populationfitness排序
+        double t=end.tv_sec - start.tv_sec;
+        populationfitness_=Decode_(population);//我们的fitness
+        gettimeofday(&end, NULL);
+        fitlist.push_back({t,populationfitness_});
+        if (t>60*index){
+            std::cout<<"iter="<<i<<std::endl;
+            std::cout<<"fit="<<populationfitness_<<std::endl;
+            index+=1;
+        }
+        if(t>60){
+            break;
         }
 
+
+        std::vector<std::vector<float>> populatione=Selectpe(pe,population);//筛选精英父代
+        std::vector<std::vector<float>> populationnew= CrossOver(populatione,population,p-pe-pm,rou);//交叉算子
+        std::vector<std::vector<float>> populationm= Mutiation(pm,num);//变异算子
+        population.clear();
+
+        // 重新拼接
+        population.insert(population.end(), populatione.begin(), populatione.end());
+        population.insert(population.end(), populationnew.begin(), populationnew.end());
+        population.insert(population.end(), populationm.begin(), populationm.end());
+
+    }
+    fstream f;
+    f.open("record_.txt",ios::out|ios::app);
+    f<<populationfitness[0]<<std::endl;
+    f.close();
+}
+std::vector<std::vector<float>> amopt_pack::CarvingMachine::initial(int p,int num){
+    std::mt19937 rng(std::random_device{}());
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    // 定义二维 vector，p 个个体，每个长度为 2*num
+    std::vector<std::vector<float>> population(p, std::vector<float>(2 * num));
+
+    // 填充随机数
+    for (int i = 0; i < p; ++i) {
+        for (int j = 0; j < 2 * num; ++j) {
+            population[i][j] = dist(rng);
+        }
+    }
+//    std::vector<float> gene(2 * num);
+//    for (int i = 0; i < num; ++i) {
+//        float area = parts[i]->width * parts[i]->height;
+//        gene[i] = 1.0f - area / 1220/1440;
+//    }
+//
+//    // 后 num 个基因：随机键
+//    for (int i = 0; i < num; ++i) {
+//        gene[num + i] = dist(rng);
+//    }
+//
+//    population.push_back(gene);
+    return population;
+}
+std::vector<float> amopt_pack::CarvingMachine::Decode(std::vector<std::vector<float>> &population)
+{
+    int p = population.size();
+    std::vector<float> fitlist(p);
+
+    // 1. 计算适应度
+    for (int i = 0; i < p; ++i) {
+        fitlist[i] = calfit(population[i]);
     }
 
-    if (success_flag) *success_flag = (bestScore1 == 0.0);
-//    int sumnum=0;
-//    for (int i=0;i<bestBins.size();i++){
-//        sumnum+=bestBins[i].rects.size();
-//    }
-//    if (sumnum>destroy_set.size()){
-//        std::cout<<1;
-//    }
-    return bestBins;
+    // 2. 构造索引数组
+    std::vector<int> idx(p);
+    std::iota(idx.begin(), idx.end(), 0);  // idx = 0,1,2,...,p-1
+
+    // 3. 按适应度升序排序 idx
+    std::sort(idx.begin(), idx.end(),
+              [&](int a, int b) { return fitlist[a] < fitlist[b]; });
+
+    // 4. 根据排序后的 idx 重新排列 population 和 fitlist
+    std::vector<std::vector<float>> population_sorted;
+    std::vector<float> fitlist_sorted;
+
+    population_sorted.reserve(p);
+    fitlist_sorted.reserve(p);
+
+    for (int id : idx) {
+        population_sorted.push_back(std::move(population[id]));
+        fitlist_sorted.push_back(fitlist[id]);
+    }
+
+    // 替换原始 population
+    population = std::move(population_sorted);
+
+    return fitlist_sorted;
 }
-//std::vector<Bin> regroup_4(
-//        std::vector<Rect> destroy_set,   // 按值：我们要 sort/shuffle
-//        bool* success_flag,
-//        const Rect& binSize,             // 用 Rect 承载 w,h（x,y 忽略）
-//        int destroy_num,
-//        std::mt19937& mt
-//) {
-//    std::uniform_int_distribution<int> dist(0, 5);
-//    const int rule = dist(mt);
-//
-//    switch (rule) {
-//        case 0: std::sort(destroy_set.begin(), destroy_set.end(), cmpArea); break;
-//        case 1: std::sort(destroy_set.begin(), destroy_set.end(), cmpPerimeter); break;
-//        case 2: std::sort(destroy_set.begin(), destroy_set.end(), cmpLongSide); break;
-//        case 3: std::sort(destroy_set.begin(), destroy_set.end(), cmpShortSide); break;
-//        case 4: [[fallthrough]];
-//        case 5: std::shuffle(destroy_set.begin(), destroy_set.end(), mt); break;
-//    }
-//
-//    std::vector<Bin> bins;
-//    bins.reserve(std::min<int>(destroy_num > 0 ? destroy_num : 1, (int)destroy_set.size()));
-//    bins.push_back(Bin{});
-//
-//    // 每个 bin 对应一份 free-rectangles 列表
-//    std::vector<std::vector<Rect>> freeRects;
-//    freeRects.reserve(bins.capacity());
-//    freeRects.push_back({Rect{0, 0, binSize.w, binSize.h}});
-//
-//    for (const auto& item : destroy_set) {
-//        bool placed = false;
-//
-//        // 尝试放入已有 bins
-//        for (size_t k = 0; k < bins.size(); ++k) {
-//            Rect pos = Insert(item.w, item.h, freeRects[k], mt);
-//            if (pos.h != 0) {
-//                // 注意：原 destroy_set[j] 里可能还带“其他字段”，但你现在结构已经明确为 Rect
-//                bins[k].rects.push_back(pos);
-//                placed = true;
+float amopt_pack::CarvingMachine::Decode_(std::vector<std::vector<float>> population){
+    float fitlist_;
+
+    // 1. 计算适应度
+    fitlist_= calfit_(population[0]);
+    return fitlist_;
+}
+std::vector<std::vector<float>> amopt_pack::CarvingMachine::Selectpe(int pe, std::vector<std::vector<float>> population){
+    std::vector<std::vector<float>> populatione;
+    populatione.reserve(pe);
+
+    // 将 population 的前 pe 个个体复制到 populatione
+    for (int i = 0; i < pe && i < population.size(); ++i) {
+        populatione.push_back(population[i]);
+    }
+    return populatione;
+}
+std::vector<std::vector<float>> amopt_pack::CarvingMachine::CrossOver(std::vector<std::vector<float>> populatione, std::vector<std::vector<float>> population, int p_, float rou){
+    std::vector<std::vector<float>> populationnew;
+    populationnew.reserve(p_);
+
+    int elite_size = populatione.size();
+    int nonelite_size = population.size();
+
+    if (elite_size == 0 || nonelite_size == 0) {
+        return populationnew; // 无法交叉的情况
+    }
+
+    // 随机数生成器
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<int> pick_elite(0, elite_size - 1);
+    std::uniform_int_distribution<int> pick_nonelite(0, nonelite_size - 1);
+    std::uniform_real_distribution<float> U01(0.0f, 1.0f);
+
+    // 生成 p_ 个子代
+    for (int k = 0; k < p_; ++k) {
+
+        // 随机选择父本
+        const std::vector<float>& parent_e = populatione[pick_elite(rng)];
+        const std::vector<float>& parent_n = population[pick_nonelite(rng)];
+
+        int L = parent_e.size();
+        std::vector<float> child(L);
+
+        // 参数化均匀交叉：逐基因以 rou 概率选择精英
+        for (int i = 0; i < L; ++i) {
+            child[i] = (U01(rng) < rou) ? parent_e[i] : parent_n[i];
+        }
+
+        populationnew.push_back(std::move(child));
+    }
+
+    return populationnew;
+}
+std::vector<std::vector<float>> amopt_pack::CarvingMachine::Mutiation(int pm, int num){
+    std::mt19937 rng(std::random_device{}());
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    // 定义二维 vector，p 个个体，每个长度为 2*num
+    std::vector<std::vector<float>> populationm(pm, std::vector<float>(2 * num));
+
+    // 填充随机数
+    for (int i = 0; i < pm; ++i) {
+        for (int j = 0; j < 2 * num; ++j) {
+            populationm[i][j] = dist(rng);
+        }
+    }
+
+    return populationm;
+}
+float amopt_pack::CarvingMachine::calfit(std::vector<float> population){
+    std::vector<int> idx(parts.size());
+    int num= population.size()/2;
+    std::iota(idx.begin(), idx.end(), 0);   // 生成 0,1,2,...,n-1
+    std::vector<float> pop(population.begin(), population.begin() + num);
+    std::vector<float> rotate(population.begin() + num, population.end());
+// 按 pop 的值排序 idx
+    std::sort(idx.begin(), idx.end(), [&](int a, int b){
+        return pop[a] < pop[b];
+    });
+
+// 生成重新排序的 parts
+    Part_Ptr_V reordered_parts;
+    reordered_parts.reserve(parts.size());
+    std::vector<float> reordered_rotate;
+    reordered_rotate.reserve(parts.size());
+    for (int id : idx) {
+        reordered_rotate.push_back(rotate[id]);
+        Part_Ptr part_temp = std::make_shared<Part>(*parts[id]);;
+        if (rotate[id] > 0.5f) {// 刚 push_back 的引用
+            if(part_temp->width<bins[0]->height &&part_temp->height<bins[0]->width){
+                std::swap(part_temp->width, part_temp->height);// 高效且安全
+            }
+        }
+        reordered_parts.push_back(part_temp);
+    }
+    PackSolution newsolution;
+    newsolution.bins_normal={};
+    vector<Part_Ptr_V> rects=maxRectBRKGA(reordered_parts,bins[0]->width,bins[0]->height,mt);
+    for(int i = 0; i < rects.size(); i++){
+        Bin_Ptr p_bin(new amopt_pack::Bin(bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->width,
+                                          bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->height,
+                                          false));
+        p_bin->parts=rects[i];
+        newsolution.bins_normal.push_back(p_bin);
+    }
+//    for (int i = 0; i < reordered_parts.size(); i++) {
+//        bool check = false;
+//        check = false;
+//        for (int j = 0; j < newsolution.bins_normal.size(); j++) {
+//            Part_Ptr_V parts = insert(newsolution.bins_normal[j], reordered_parts[i], mt, true, true);
+//            if (parts.size() == 0) {
+//                check = true;
 //                break;
 //            }
 //        }
+//        if (check) continue;
 //
-//        if (!placed) {
-//            // 如果你想启用“超过 destroy_num 就停止”的逻辑，可在这里恢复你注释掉的 break
-//            bins.push_back(Bin{});
-//            freeRects.push_back({Rect{0, 0, binSize.w, binSize.h}});
-//
-//            Rect pos = Insert(item.w, item.h, freeRects.back(), mt);
-//            // 你原代码这里是 push_back(destroy_set[j])，会把“未放置坐标”的矩形塞进去，不严谨。
-//            // 建议：能放就放 pos；不能放就仍然记录 item（或直接失败返回）。
-//            if (pos.h != 0) bins.back().rects.push_back(pos);
-//            else            bins.back().rects.push_back(item);
+//        Bin_Ptr p_bin(new amopt_pack::Bin(bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->width,
+//                                          bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->height,
+//                                          false));
+//        Part_Ptr_V parts = insert(p_bin, reordered_parts[i], mt, true, true);
+//        if (parts.size() != 0) {
+////            std::cout << notbackparts[i]->width << "  " << notbackparts[i]->height << std::endl;
+////            std::cout << bins[solution.bins_back.size() + solution.bins_normal.size()]->width << "  "
+////                      << bins[solution.bins_back.size() + solution.bins_normal.size()]->height << std::endl;
+//            std::cout << "initial insert error" << std::endl;
+////                exit(0);
 //        }
+//        newsolution.bins_normal.push_back(p_bin);
 //    }
-//
-//    if (success_flag) *success_flag = (destroy_num <= 0) ? true : ((int)bins.size() <= destroy_num);
-//    return bins;
-//}
+    newsolution.update_area(1);
+    float fit=newsolution.getunity();
+    return fit;
+}
+float amopt_pack::CarvingMachine::calfit_(std::vector<float> population){
+    std::vector<int> idx(parts.size());
+    int num= population.size()/2;
+    std::iota(idx.begin(), idx.end(), 0);   // 生成 0,1,2,...,n-1
+    std::vector<float> pop(population.begin(), population.begin() + num);
+    std::vector<float> rotate(population.begin() + num, population.end());
+// 按 pop 的值排序 idx
+    std::sort(idx.begin(), idx.end(), [&](int a, int b){
+        return pop[a] < pop[b];
+    });
 
-std::vector<Bin> maxRects(
-        std::vector<Rect> parts,     // 按值：内部要 shuffle + erase
-        double width,
-        double height,
-        int binNum,
-        float* score1,
-        float* score2,
-        std::mt19937& mt             // 关键：按引用
-) {
-//    std::shuffle(parts.begin(), parts.end(), mt);
-
-    // 保持你原来 max(binNum-1,1) 的逻辑
-    const int initBins = std::max(binNum - 1, 1);
-
-    std::vector<Bin> ret(initBins);
-    std::vector<std::vector<Rect>> freeRectangles(initBins, std::vector<Rect>{ Rect{0, 0, width, height} });
-
-    double bestScore1 = std::numeric_limits<double>::max();
-    int big_length = 1; // 只在前 big_length 个 bin 中尝试插入（与你原逻辑一致）
-
-    // 复用候选容器，避免每轮频繁分配
-    std::vector<std::pair<int,int>> candidates;
-    candidates.reserve(128);
-
-    while (!parts.empty()) {
-        bestScore1 = std::numeric_limits<double>::max();
-        candidates.clear();
-
-        const int activeBins = std::min<int>(big_length, (int)freeRectangles.size());
-
-        // 1) 在当前 activeBins 中找 bestScore1 的候选 (binIndex, partIndex)
-        for (int i1 = 0; i1 < (int)parts.size(); ++i1) {
-            const double pw = parts[i1].w;
-            const double ph = parts[i1].h;
-
-            for (int j = 0; j < activeBins; ++j) {
-                const double sc = Insertscore(pw, ph, freeRectangles[j], mt);
-
-                if (sc < bestScore1) {
-                    bestScore1 = sc;
-                    candidates.clear();
-                    candidates.emplace_back(j, i1);
-                } else if (sc == bestScore1 && sc != std::numeric_limits<double>::max()) {
-                    candidates.emplace_back(j, i1);
-                }
+// 生成重新排序的 parts
+    Part_Ptr_V reordered_parts;
+    reordered_parts.reserve(parts.size());
+    std::vector<float> reordered_rotate;
+    reordered_rotate.reserve(parts.size());
+    for (int id : idx) {
+        reordered_rotate.push_back(rotate[id]);
+        Part_Ptr part_temp = std::make_shared<Part>(*parts[id]);;
+        if (rotate[id] > 0.5f) {// 刚 push_back 的引用
+            if(part_temp->width<bins[0]->height &&part_temp->height<bins[0]->width){
+                std::swap(part_temp->width, part_temp->height);// 高效且安全
             }
         }
-
-        // 2) 若当前 activeBins 都放不下任何 part
-        if (bestScore1 == std::numeric_limits<double>::max()) {
-            if (big_length < binNum - 1) {
-                // 扩大搜索到更多“已有 bin”
-                ++big_length;
-                continue;
-            }
-
-            // 否则：新增一个 bin（与你原逻辑一致：big_length 也加 1）
-            ++big_length;
-            freeRectangles.push_back({ Rect{0, 0, width, height} });
-            ret.push_back(Bin{});
-
-            // 在新 bin 中挑一个最容易插的 part
-            int bestRectIndex = -1;
-            double bestLocal = std::numeric_limits<double>::max();
-
-            for (int i1 = 0; i1 < (int)parts.size(); ++i1) {
-                const double sc = Insertscore(parts[i1].w, parts[i1].h, freeRectangles.back(), mt);
-                if (sc < bestLocal) {
-                    bestLocal = sc;
-                    bestRectIndex = i1;
-                }
-            }
-
-            if (bestRectIndex != -1 && bestLocal != std::numeric_limits<double>::max()) {
-                // 真正插入：Insert 会更新 freeRectangles.back()
-                Rect placed = Insert(parts[bestRectIndex].w, parts[bestRectIndex].h, freeRectangles.back(), mt);
-                if (placed.h != 0) {
-                    ret.back().rects.push_back(placed);
-                    parts.erase(parts.begin() + bestRectIndex);
-                }
-            }
-
-            continue;
-        }
-
-        // 3) 存在可行候选：在 candidates 中随机选一个（与你原逻辑一致）
-        std::uniform_int_distribution<int> dis(0, (int)candidates.size() - 1);
-        const int pick = dis(mt);
-        const int bestBinIndex  = candidates[pick].first;
-        const int bestRectIndex = candidates[pick].second;
-
-        Rect placed = Insert(parts[bestRectIndex].w, parts[bestRectIndex].h, freeRectangles[bestBinIndex], mt);
-        if (placed.h != 0) {
-            ret[bestBinIndex].rects.push_back(placed);
-            parts.erase(parts.begin() + bestRectIndex);
-        } else {
-            // 理论上 Insertscore 过滤后不应发生；保底：避免死循环
-            parts.erase(parts.begin() + bestRectIndex);
-        }
+        reordered_parts.push_back(part_temp);
+    }
+    PackSolution newsolution;
+    newsolution.bins_normal={};
+    vector<Part_Ptr_V> rects=maxRectBRKGA(reordered_parts,bins[0]->width,bins[0]->height,mt);
+    for(int i = 0; i < rects.size(); i++){
+        Bin_Ptr p_bin(new amopt_pack::Bin(bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->width,
+                                          bins[newsolution.bins_back.size() + newsolution.bins_normal.size()]->height,
+                                          false));
+        p_bin->parts=rects[i];
+        newsolution.bins_normal.push_back(p_bin);
     }
 
-    // 4) 计算 score1 / score2（保持你原始定义）
-    if (score1) {
-        *score1 = 0.0f;
-        for (int i = 0; i < (int)ret.size(); ++i) {
-            if (i >= binNum) {
-                for (const auto& p : ret[i].rects) *score1 += (float)(p.w * p.h);
-            }
-        }
-        // 原代码这里还加 parts 的面积；但 while 结束 parts 已空，这里等价为 0
+    newsolution.update_area(1);
+    float fit=0;
+    for (int i=0;i<newsolution.bins_normal.size();i++){
+        fit+=newsolution.bins_normal[i]->unity*newsolution.bins_normal[i]->unity;
     }
 
-    if (score2) {
-        *score2 = 0.0f;
-        if (!ret.empty()) {
-            for (const auto& p : ret.back().rects) *score2 += (float)(p.w * p.h);
-        }
-    }
-
-    return ret;
-}
-double Insertscore(
-        double width,
-        double height,
-        const std::vector<Rect>& freeRectangles,  // 关键：const&
-        std::mt19937& mt                           // 关键：&
-) {
-    double score1 = std::numeric_limits<double>::max();
-    double score2 = std::numeric_limits<double>::max();
-
-    // newNode 若你后续完全不用，可不接收返回值
-    Rect node=FindPositionForNewNodeBestShortSideFit_(width, height, score1, score2, freeRectangles, mt);
-
-    return score1;
-}
-Rect FindPositionForNewNodeBestShortSideFit_(double width, double height,
-                                       double &bestShortSideFit,
-                                       double &bestLongSideFit,std::vector<Rect> freeRectangles,std::mt19937 mt) {
-    Rect bestNode{0,0,0,0};
-
-    // 仅在需要随机打破平局时再取随机数，避免每次构造 distribution
-    std::uniform_real_distribution<double> dt(0.0, 1.0);
-
-    for (const auto& fr : freeRectangles) {
-        if (fr.w >= width && fr.h >= height) {
-            const double leftoverHoriz = std::abs(fr.w - width);
-            const double leftoverVert  = std::abs(fr.h - height);
-            const double shortSideFit  = std::min(leftoverHoriz, leftoverVert);
-            const double longSideFit   = std::max(leftoverHoriz, leftoverVert);
-
-            if (shortSideFit < bestShortSideFit) {
-                bestNode = Rect{fr.x, fr.y, width, height};
-                bestShortSideFit = shortSideFit;
-                bestLongSideFit  = longSideFit;
-            } else if (shortSideFit == bestShortSideFit && longSideFit < bestLongSideFit) {
-                // 你原先的 tie-break：50% 概率替换
-                bestNode = Rect{fr.x, fr.y, width, height};
-                bestShortSideFit = shortSideFit;
-                bestLongSideFit = longSideFit;
-            }
-                else if (shortSideFit == bestShortSideFit && longSideFit == bestLongSideFit){
-                    if (dt(mt) > 0.5) {
-                        bestNode = Rect{fr.x, fr.y, width, height};
-                        bestShortSideFit = shortSideFit;
-                        bestLongSideFit  = longSideFit;
-                    }
-                }
-            }
-        }
-    return bestNode;
-}
-Rect FindPositionForNewNodeBestShortSideFit(
-        double width,
-        double height,
-        const std::vector<Rect>& freeRectangles,
-        std::mt19937& mt
-) {
-    Rect bestNode{0,0,0,0};
-    double bestShortSideFit = std::numeric_limits<double>::max();
-    double bestLongSideFit  = std::numeric_limits<double>::max();
-
-    // 仅在需要随机打破平局时再取随机数，避免每次构造 distribution
-    std::uniform_real_distribution<double> dt(0.0, 1.0);
-
-    for (const auto& fr : freeRectangles) {
-        if (fr.w >= width && fr.h >= height) {
-            const double leftoverHoriz = std::abs(fr.w - width);
-            const double leftoverVert  = std::abs(fr.h - height);
-            const double shortSideFit  = std::min(leftoverHoriz, leftoverVert);
-            const double longSideFit   = std::max(leftoverHoriz, leftoverVert);
-
-            if (shortSideFit < bestShortSideFit) {
-                bestNode = Rect{fr.x, fr.y, width, height};
-                bestShortSideFit = shortSideFit;
-                bestLongSideFit  = longSideFit;
-            } else if (shortSideFit == bestShortSideFit && longSideFit < bestLongSideFit) {
-                // 你原先的 tie-break：50% 概率替换
-                bestNode = Rect{fr.x, fr.y, width, height};
-                bestShortSideFit = shortSideFit;
-                bestLongSideFit = longSideFit;
-            }
-            else if (shortSideFit == bestShortSideFit && longSideFit == bestLongSideFit){
-                if (dt(mt) > 0.5) {
-                    bestNode = Rect{fr.x, fr.y, width, height};
-                    bestShortSideFit = shortSideFit;
-                    bestLongSideFit  = longSideFit;
-                }
-            }
-        }
-    }
-    return bestNode;
-}
-
-Rect Insert(
-        double width,
-        double height,
-        std::vector<Rect>& freeRectangles,
-        std::mt19937& mt
-) {
-    Rect newNode = FindPositionForNewNodeBestShortSideFit(width, height, freeRectangles, mt);
-    if (newNode.h == 0) return newNode;
-
-    // 这里不要反复调用 freeRectangles.size()（虽小，但免费优化）
-    for (size_t i = 0; i < freeRectangles.size(); ++i) {
-        if (SplitFreeNode(freeRectangles[i], newNode, freeRectangles)) {
-            freeRectangles.erase(freeRectangles.begin() + i);
-            --i; // 继续检查当前位置（因为 erase 使后续左移）
-        }
-    }
-    PruneFreeList(freeRectangles);
-    return newNode;
-}
-
-static PackResult pack_with_order_and_remain(
-        std::vector<Rect> parts,
-        const Rect& binSize,
-        int destroy_num,
-        std::mt19937& mt,
-        std::vector<Rect>& remain   // <<< 新增：输出剩余矩形
-) {
-    PackResult out;
-    remain.clear();
-
-    if (destroy_num <= 0) destroy_num = 1;
-
-    std::vector<Bin> bins;
-    bins.reserve(std::min<int>(destroy_num, (int)parts.size()));
-    bins.push_back(Bin{});
-
-    std::vector<std::vector<Rect>> freeRects;
-    freeRects.reserve(bins.capacity());
-    freeRects.push_back({ Rect{0,0,binSize.w,binSize.h} });
-
-    int j = 0;
-    for (; j < (int)parts.size(); ++j) {
-        const Rect& item = parts[j];
-        bool placed = false;
-
-        for (size_t k = 0; k < bins.size(); ++k) {
-            Rect pos = Insert(item.w, item.h, freeRects[k], mt);
-            if (pos.h != 0) {
-                bins[k].rects.push_back(pos);
-                placed = true;
-                break;
-            }
-        }
-
-        if (!placed) {
-            if ((int)bins.size() >= destroy_num) {
-                break;
-            }
-            bins.push_back(Bin{});
-            freeRects.push_back({ Rect{0,0,binSize.w,binSize.h} });
-
-            Rect pos = Insert(item.w, item.h, freeRects.back(), mt);
-            if (pos.h == 0) break;
-            bins.back().rects.push_back(pos);
-        }
-    }
-
-    // 剩余矩形 r：parts[j..end)
-    if (j < (int)parts.size()) {
-        remain.insert(remain.end(), parts.begin() + j, parts.end());
-    }
-
-    // score1：未装入面积
-    double leftover = 0.0;
-    for (int k = j; k < (int)parts.size(); ++k) {
-        leftover += parts[k].w * parts[k].h;
-    }
-
-    // score2：最小装载 bin 的面积（与你当前 pack_with_order 一致）
-    double lastBinArea = 0.0;
-    if (!bins.empty()) {
-        double minArea = std::numeric_limits<double>::infinity();
-        for (const auto& b : bins) {
-            if (b.rects.empty()) continue;
-            const double a = sumArea(b.rects);
-            if (a < minArea) minArea = a;
-        }
-        if (minArea != std::numeric_limits<double>::infinity())
-            lastBinArea = minArea;
-    }
-
-    out.bins   = std::move(bins);
-    out.score1 = leftover;
-    out.score2 = lastBinArea;
-    return out;
-}
-std::vector<Rect> insertparts_1(
-        std::vector<Rect>& bin,
-        const Rect& part,
-        const Rect& binSize,
-        std::mt19937& mt,
-        bool *flag
-) {
-    std::vector<Rect> parts;
-    parts.reserve(bin.size() + 1);
-    parts.insert(parts.end(), bin.begin(), bin.end());
-    parts.push_back(part);
-
-    // 50% 概率保持原顺序；50% 概率应用 rule（sort 或 shuffle）
-    float best1 = 1e30f, best2 = 1e30f;
-    std::vector<Rect> bestParts = parts;
-    std::vector<Bin>  bestRet;
-    std::mt19937      bestMt = mt;
-    std::vector<Rect> bestRemain;
-    auto try_one = [&](std::vector<Rect> cand) {
-        std::mt19937 mtLocal = mt;  // 每个候选从同一 RNG 状态出发，公平比较
-
-        std::vector<Rect> remain;
-        PackResult pr = pack_with_order_and_remain(std::move(cand), binSize, /*destroy_num=*/1, mtLocal, remain);
-
-        const double s1 = pr.score1;
-        const double s2 = pr.score2;
-
-        if (s1 < best1 || (s1 == best1 && s2 < best2)) {
-            best1 = s1; best2 = s2;
-            // 注意：cand 已经 move 进 pack_with_order_and_remain 了，如果你确实要保存“该候选顺序”，
-            // 需要在调用前保留一份；否则可删掉 bestParts 这一行。
-            bestRet    = std::move(pr.bins);
-            bestRemain = std::move(remain);  // <<< 这就是你要的“剩余矩形 r”
-            bestMt     = mtLocal;
-        }
-    };
-
-    // 0) 原顺序
-    try_one(parts);
-
-    // 1) 四种排序
-    { auto cand = parts; std::sort(cand.begin(), cand.end(), cmpArea);      try_one(std::move(cand)); }
-    { auto cand = parts; std::sort(cand.begin(), cand.end(), cmpPerimeter); try_one(std::move(cand)); }
-    { auto cand = parts; std::sort(cand.begin(), cand.end(), cmpLongSide);  try_one(std::move(cand)); }
-    { auto cand = parts; std::sort(cand.begin(), cand.end(), cmpShortSide); try_one(std::move(cand)); }
-
-    // 2) 两次 shuffle（对应你原来 case 4/5 都是 shuffle）
-    {;        // 用一个滚动 RNG 生成两个不同 shuffle
-        for (int t = 0; t < 2; ++t) {
-            auto cand = parts;
-            std::shuffle(cand.begin(), cand.end(), mt);
-            try_one(std::move(cand));
-        }
-    }
-
-    // 写回最佳结果
-    parts = std::move(bestParts);
-
-    float score1MaxRects = best1, score2MaxRects = best2;
-    std::vector<Bin> ret = std::move(bestRet);
-
-    if (score1MaxRects == 0.0f && !ret.empty()) {
-        bin = std::move(ret[0].rects);
-        *flag=true;
-        return {};
-    }
-    else{
-        if (sumArea(bin)<sumArea(ret[0].rects)){
-            bin = std::move(ret[0].rects);
-//            std::vector<Rect> out;
-//            size_t cap = 0;
-//            for (size_t i = 1; i < ret.size(); ++i) cap += ret[i].rects.size();
-//            out.reserve(cap);
-//
-//            for (size_t i = 1; i < ret.size(); ++i) {
-//                const auto& rs = ret[i].rects;
-//                out.insert(out.end(), rs.begin(), rs.end());
-//            }
-            *flag=true;
-            return bestRemain;
-        }
-    }
-    *flag=false;
-    return {part};
-}
-
-bool SplitFreeNode(Rect freeNode, const Rect &usedNode,std::vector<Rect> &freeRectangles) {
-    // Test with SAT if the rectangles even intersect.
-    if (usedNode.x >= freeNode.x + freeNode.w || usedNode.x + usedNode.w <= freeNode.x ||
-        usedNode.y >= freeNode.y + freeNode.h || usedNode.y + usedNode.h <= freeNode.y)
-        return false;
-
-    if (usedNode.x < freeNode.x + freeNode.w && usedNode.x + usedNode.w > freeNode.x) {
-        // New node at the top side of the used node.
-        if (usedNode.y > freeNode.y && usedNode.y < freeNode.y + freeNode.h) {
-            Rect newNode = freeNode;
-            newNode.h = usedNode.y - newNode.y;
-            freeRectangles.push_back(newNode);
-        }
-
-        // New node at the bottom side of the used node.
-        if (usedNode.y + usedNode.h < freeNode.y + freeNode.h) {
-            Rect newNode = freeNode;
-            newNode.y = usedNode.y + usedNode.h;
-            newNode.h = freeNode.y + freeNode.h - (usedNode.y + usedNode.h);
-            freeRectangles.push_back(newNode);
-        }
-    }
-
-    if (usedNode.y < freeNode.y + freeNode.h && usedNode.y + usedNode.h > freeNode.y) {
-        // New node at the left side of the used node.
-        if (usedNode.x > freeNode.x && usedNode.x < freeNode.x + freeNode.w) {
-            Rect newNode = freeNode;
-            newNode.w = usedNode.x - newNode.x;
-            freeRectangles.push_back(newNode);
-        }
-
-        // New node at the right side of the used node.
-        if (usedNode.x + usedNode.w < freeNode.x + freeNode.w) {
-            Rect newNode = freeNode;
-            newNode.x = usedNode.x + usedNode.w;
-            newNode.w = freeNode.x + freeNode.w - (usedNode.x + usedNode.w);
-            freeRectangles.push_back(newNode);
-        }
-    }
-
-    return true;
-}
-void PruneFreeList(std::vector<Rect> &freeRectangles) {
-    for (size_t i = 0; i < freeRectangles.size(); ++i)
-        for (size_t j = i + 1; j < freeRectangles.size(); ++j) {
-            if (IsContainedIn(freeRectangles[i], freeRectangles[j])) {
-                freeRectangles.erase(freeRectangles.begin() + i);
-                --i;
-                break;
-            }
-            if (IsContainedIn(freeRectangles[j], freeRectangles[i])) {
-                freeRectangles.erase(freeRectangles.begin() + j);
-                --j;
-            }
-        }
-}
-bool IsContainedIn(const Rect &a, const Rect &b)
-    {
-        return a.x >= b.x && a.y >= b.y
-               && a.x+a.w <= b.x+b.w
-                  && a.y+a.h <= b.y+b.h;
-    }
-std::vector<Bin> acceptance(
-        const std::vector<Bin>& temp_solution,
-        double& solution_cost,
-        const std::vector<Bin>& solution,
-        int iter,
-        int max_iter,
-        const Rect& binSize,
-        std::mt19937& mt,
-        bool flag,
-        int failiter
-
-) {
-    // 原逻辑：flag=false 直接拒绝
-    if (!flag) return solution;
-
-    // theta=0.07*(max_iter-iter)/max_iter
-    // 避免整型除法问题，且防止 max_iter==0
-    double theta = (max_iter > 0)
-                         ? 0.2 * (double)(max_iter - iter) / (double)max_iter
-                         : 0.0;
-    if (failiter>max_iter/10&& theta<0.1 * (double)(max_iter - iter) / (double)max_iter){
-        theta=theta+0.1 * (double)(max_iter - iter) / (double)max_iter;
-    }
-    const double new_cost = getcost(temp_solution, binSize);
-//    int sumnum=0;
-//    for (int i=0;i<temp_solution.size();i++){
-//        sumnum+=temp_solution[i].rects.size();
-//    }
-//    if (sumnum>100){
-//        std::cout<<1;
-//    }
-    // 原逻辑：new_solution_cost > solution_cost - theta 则接受
-    std::uniform_real_distribution<> dis(0, 1);
-    float prob = dis(mt);
-
-    if (prob < exp((-solution_cost +new_cost) / theta)) {
-        solution_cost = new_cost;
-        std::vector<Bin> accepted = temp_solution;
-        accepted.erase(
-                std::remove_if(accepted.begin(), accepted.end(),
-                               [](const Bin& b) { return b.rects.empty(); }),
-                accepted.end()
-        );
-        return accepted;
-    }
-/*    if (new_cost > solution_cost - theta) {
-        solution_cost = new_cost;
-
-        // 等价于你原来的“接受后删空 bin”
-        std::vector<Bin> accepted = temp_solution;
-        accepted.erase(
-                std::remove_if(accepted.begin(), accepted.end(),
-                               [](const Bin& b) { return b.rects.empty(); }),
-                accepted.end()
-        );
-        return accepted;
-    }*/
-
-    return solution;
-}
-double getcost(const std::vector<Bin>& solution, const Rect& binSize) {
-    const double binfill = binSize.w * binSize.h;
-    if (binfill <= 0.0) return 0.0;
-
-    const double coef = 4.0;  // 等价于 4/binfill/binfill
-
-    double cost = 0.0;
-
-    int lastIndex = -1;
-    double lastAvg = std::numeric_limits<double>::infinity();
-    double lastSumAreaSq = 0.0; // 用于最后一次性扣掉“最小平均面积bin”的项
-
-    for (size_t i = 0; i < solution.size(); ++i) {
-        const auto& bin = solution[i];
-        if (bin.rects.empty()) continue;   // 对应你原来的 temp_solution[i].size()==0
-
-        cost -= 10.0;
-
-        double sumArea = 0.0;
-        double sumAreaSq = 0.0;
-        int cnt = 0;
-
-        for (const auto& r : bin.rects) {
-            // 你原代码是通过 "size()>0" 判断是否有效；这里用 h==0 作为无效约定（与前面一致）
-            if (r.h == 0.0 || r.w == 0.0) continue;
-
-            const double a = r.w * r.h;
-            ++cnt;
-            sumArea += a;
-        }
-        sumAreaSq = sumArea * sumArea/ (binfill * binfill);
-
-        if (cnt > 0) {
-            cost += coef * sumAreaSq;
-
-//            const double avg = sumArea / (double)cnt;
-            const double avg = sumArea ;
-            if (avg < lastAvg) {
-                lastAvg = avg;
-                lastIndex = (int)i;
-                lastSumAreaSq = sumAreaSq;
-            }
-        }
-    }
-
-    // 如果所有 bin 都为空或都没有有效 rect，直接返回当前 cost
-    if (lastIndex == -1) return cost;
-
-    // 扣掉“平均面积最小的 bin”中所有矩形对应的项（与你原来的第二个 for 等价）
-    cost -= coef * lastSumAreaSq;
-    return cost;
-}
-void compute(Json::Value &result_list,string str) {
-
-    vector<Rect> parts= toRectVector(Input(str));
-    Rect binsize={0,0,Inputbinsize(str)[0],Inputbinsize(str)[1]};
-    optimize(parts,binsize);
-
-}
-bool cmpArea(const Rect& a, const Rect& b) {
-    return a.w*a.h > b.w*b.h;
-}
-bool cmpPerimeter(const Rect& a, const Rect& b)  {
-    return (a.w+ a.h) > ( b.w+ b.h);
-}
-
-bool cmpLongSide(const Rect& a, const Rect& b) {
-    return max(a.w, a.h) > max (b.w, b.h);
-}
-
-bool cmpShortSide(const Rect& a, const Rect& b)  {
-    return min(a.w, a.h) > min( b.w, b.h);
-}
-int rand_with_linear_range(int iter, int max_iter, std::mt19937 &mt, int failiter) {
-    if (max_iter <= 0) {
-        std::uniform_int_distribution<int> dist_fallback(2, 4);
-        return dist_fallback(mt);
-    }
-
-    iter = std::max(0, std::min(iter, max_iter));
-//    int the_iter=std::min(20000,max_iter);
-    int the_iter=max_iter/10;
-    if(iter>the_iter){
-        if((failiter*20/max_iter)%2==1){
-            return 3;
-        }
-        return 2;
-    }
-
-    else{
-        double t = static_cast<double>(iter) / static_cast<double>(the_iter); // t ∈ [0,1]
-
-        // 线性插值端点
-
-        double low_d  = 6.0 + (2.0 - 6.0) * t;   // 8 -> 2
-        double high_d = 8.0 + (3.0 - 8.0) * t;  // 10 -> 4
-
-        int low  = static_cast<int>(std::round(low_d));
-        int high = static_cast<int>(std::round(high_d));
-
-        // 保险起见，保证 low <= high，且落在 [2,10] 里
-        if (low > high) std::swap(low, high);
-        low  = std::max(2, low);
-        high = std::min(10, high);
-
-        std::uniform_int_distribution<int> dist(low, high);
-        return dist(mt);
-    }
-}
-double sumarea(vector<vector<vector<double>>> solution){
-    double area=0;
-    for (int i=0;i<solution.size();i++){
-        for (int j=0;j<solution[i].size();j++){
-            area+=   solution[i][j][2]*solution[i][j][3];
-        }
-    }
-    return area;
-}
-static inline double binTotalArea(const Bin& b) {
-    double sum = 0.0;
-    for (const auto& r : b.rects) {
-        if (r.w <= 0.0 || r.h <= 0.0) continue;  // 过滤无效块
-        sum += r.w * r.h;
-    }
-    return sum;
-}
-
-// descending=true: 总面积大 -> 小（小的在最后）
-// descending=false: 总面积小 -> 大（小的在最前）
-void sortBinsByTotalArea(std::vector<Bin>& bins, bool descending = true) {
-    std::sort(bins.begin(), bins.end(),
-              [&](const Bin& a, const Bin& b) {
-                  const double A = binTotalArea(a);
-                  const double B = binTotalArea(b);
-                  return descending ? (A > B) : (A < B);
-              });
-//    std::cout<<binTotalArea(bins[bins.size()-1])<<std::endl;
-}
-void optimize(vector<Rect> parts, Rect binsize) {
-
-//    mt.seed(std::time(0u));
-//    mt.seed(3);
-    std::uniform_real_distribution<float> dt(0, 1);
-    std::random_device rd;
-    std::mt19937 mt(rd());
-    bool success=true;
-//    std::cout<<"optimize begin"<<std::endl;
-    long long t=0;
-
-    vector<Bin> bestsolution = regroup_2(parts, &success, binsize, 1,mt);
-    vector<Bin> solution = bestsolution;
-    int max_iter = 100000;
-
-    // 累计时间（微秒）
-    long long t_destroy1 = 0;
-    long long t_destroy2 = 0;
-    long long t_destroy3 = 0;
-    long long t_repair3  = 0;
-    long long t_repair4  = 0;
-    long long t_accept   = 0;
-    double current_cost=getcost(solution,binsize);
-    double bestcost=current_cost;
-    auto t_start = Clock::now();
-    int failiter=0;
-    for (int iter = 0; iter < max_iter; iter++) {
-
-        // ---- 步骤 1：destroy_solution_1 + repair_solution4 + acceptance ----
-
-        int destroynum = rand_with_linear_range(iter, max_iter, mt,failiter);
-        vector<Bin> temp_solution = solution;
-        auto t_d1_start = Clock::now();
-        vector<Rect> destroy_set1 = destroy_solution_1(temp_solution, destroynum, mt);
-        auto t_d1_end = Clock::now();
-        t_destroy1 += std::chrono::duration_cast<microseconds>(t_d1_end - t_d1_start).count();
-
-        // repair_solution4
-        auto t_r4_start = Clock::now();
-        bool flag = repair_solution4(temp_solution, destroy_set1, binsize, destroynum,mt);
-        auto t_r4_end = Clock::now();
-        t_repair4 += std::chrono::duration_cast<microseconds>(t_r4_end - t_r4_start).count();
-
-        // acceptance
-        auto t_acc_start = Clock::now();
-        solution = acceptance(temp_solution, current_cost,solution, iter, max_iter, binsize, mt, flag,failiter);
-        auto t_acc_end = Clock::now();
-        t_accept += std::chrono::duration_cast<microseconds>(t_acc_end - t_acc_start).count();
-        failiter+=1;
-        if (bestcost < current_cost-0.0000001) {
-            bestsolution = solution;
-            sortBinsByTotalArea(bestsolution);
-            failiter=0;
-            bestcost=current_cost;
-        }
-
-        // ---- 步骤 2：每 10 轮做一次 destroy_solution_2 + repair_solution3 + acceptance ----
-        if (iter % 5 == 1) {
-            temp_solution = solution;
-
-            auto t_d2_start = Clock::now();
-            vector<Rect> destroy_set2 = destroy_solution_2(temp_solution);
-            auto t_d2_end = Clock::now();
-            t_destroy2 += std::chrono::duration_cast<microseconds>(t_d2_end - t_d2_start).count();
-
-            auto t_r3_start = Clock::now();
-            bool flag2 = repair_solution3(temp_solution, destroy_set2, binsize, 1,mt);
-            auto t_r3_end = Clock::now();
-            t_repair3 += std::chrono::duration_cast<microseconds>(t_r3_end - t_r3_start).count();
-
-            auto t_acc2_start = Clock::now();
-            solution = acceptance(temp_solution, current_cost,solution, iter, max_iter, binsize,  mt,flag2,failiter);
-            auto t_acc2_end = Clock::now();
-            t_accept += std::chrono::duration_cast<microseconds>(t_acc2_end - t_acc2_start).count();
-            failiter+=1;
-            if (bestcost < current_cost-0.000001) {
-                bestsolution = solution;
-                sortBinsByTotalArea(bestsolution);
-                failiter=0;
-                bestcost=current_cost;
-            }
-        }
-        if (iter % 5 == 2) {
-            temp_solution = solution;
-
-            auto t_d2_start = Clock::now();
-            vector<Rect> destroy_set2 = destroy_solution_5(temp_solution,mt);
-            auto t_d2_end = Clock::now();
-            t_destroy2 += std::chrono::duration_cast<microseconds>(t_d2_end - t_d2_start).count();
-
-            auto t_r3_start = Clock::now();
-            bool flag2 = repair_solution3(temp_solution, destroy_set2, binsize, 1,mt);
-            auto t_r3_end = Clock::now();
-            t_repair3 += std::chrono::duration_cast<microseconds>(t_r3_end - t_r3_start).count();
-
-            auto t_acc2_start = Clock::now();
-            solution = acceptance(temp_solution, current_cost,solution, iter, max_iter, binsize,  mt,flag2,failiter);
-            auto t_acc2_end = Clock::now();
-            t_accept += std::chrono::duration_cast<microseconds>(t_acc2_end - t_acc2_start).count();
-            failiter+=1;
-            if (bestcost < current_cost) {
-                bestsolution = solution;
-                sortBinsByTotalArea(bestsolution);
-                failiter=0;
-                bestcost=current_cost;
-            }
-        }
-        if (iter % 5 == 3) {
-            temp_solution = solution;
-
-            auto t_d2_start = Clock::now();
-            vector<Rect> destroy_set2 = destroy_solution_6(temp_solution);
-            auto t_d2_end = Clock::now();
-            t_destroy2 += std::chrono::duration_cast<microseconds>(t_d2_end - t_d2_start).count();
-
-            auto t_r3_start = Clock::now();
-            bool flag2 = repair_solution3(temp_solution, destroy_set2, binsize, 1,mt);
-            auto t_r3_end = Clock::now();
-            t_repair3 += std::chrono::duration_cast<microseconds>(t_r3_end - t_r3_start).count();
-
-            auto t_acc2_start = Clock::now();
-            solution = acceptance(temp_solution, current_cost,solution, iter, max_iter, binsize,  mt,flag2,failiter);
-            auto t_acc2_end = Clock::now();
-            t_accept += std::chrono::duration_cast<microseconds>(t_acc2_end - t_acc2_start).count();
-            failiter+=1;
-            if (bestcost < current_cost) {
-                bestsolution = solution;
-                sortBinsByTotalArea(bestsolution);
-                bestcost=current_cost;
-                failiter=0;
-            }
-        }
-//        if (iter % 10 == 0) {
-//            temp_solution = solution;
-//
-//            auto t_d2_start = Clock::now();
-//            vector<Rect> destroy_set2 = destroy_solution_4(temp_solution);
-//            auto t_d2_end = Clock::now();
-//            t_destroy2 += std::chrono::duration_cast<microseconds>(t_d2_end - t_d2_start).count();
-//
-//            auto t_r3_start = Clock::now();
-//            bool flag2 = repair_solution3(temp_solution, destroy_set2, binsize, 1,mt);
-//            auto t_r3_end = Clock::now();
-//            t_repair3 += std::chrono::duration_cast<microseconds>(t_r3_end - t_r3_start).count();
-//
-//            auto t_acc2_start = Clock::now();
-//            solution = acceptance(temp_solution, current_cost,solution, iter, max_iter, binsize,  mt,flag2);
-//            auto t_acc2_end = Clock::now();
-//            t_accept += std::chrono::duration_cast<microseconds>(t_acc2_end - t_acc2_start).count();
-//            if (bestcost < current_cost) {
-//                bestsolution = solution;
-//                sortBinsByTotalArea(bestsolution);
-//                bestcost=current_cost;
-//            }
-//        }
-
-        // ---- 步骤 3：每 10 轮、iter%10==1 时，再做一次 destroy3 + 两次 repair4 + 两次 acceptance ----
-        if (iter % 300 == 299) {
-//            temp_solution = solution;
-//
-//            auto t_d3_start = Clock::now();
-//            vector<Rect> destroy_set3 = destroy_solution_3(temp_solution, 2);
-//            auto t_d3_end = Clock::now();
-//            t_destroy3 += std::chrono::duration_cast<microseconds>(t_d3_end - t_d3_start).count();
-//
-//            // 第一次 repair4 + acceptance
-//            auto t_r4_1_start = Clock::now();
-//            bool flag3 = repair_solution4(temp_solution, destroy_set3, binsize, 2,mt);
-//            auto t_r4_1_end = Clock::now();
-//            t_repair4 += std::chrono::duration_cast<microseconds>(t_r4_1_end - t_r4_1_start).count();
-//
-//            auto t_acc3_start = Clock::now();
-//            solution = acceptance(temp_solution, current_cost,solution, iter, max_iter, binsize,mt, flag3);
-//            auto t_acc3_end = Clock::now();
-//            t_accept += std::chrono::duration_cast<microseconds>(t_acc3_end - t_acc3_start).count();
-
-            // 第二次 repair4 + acceptance（你原来代码也有这两句，我保留）
-            temp_solution = solution;
-
-            auto t_d4_start = Clock::now();
-            vector<Rect> destroy_set4 = destroy_solution_3(temp_solution, 2);
-            auto t_d4_end = Clock::now();
-            t_destroy3 += std::chrono::duration_cast<microseconds>(t_d4_end - t_d4_start).count();
-            auto t_r4_2_start = Clock::now();
-            bool flag4 = repair_solution4(temp_solution, destroy_set4, binsize, destroynum,mt);
-            auto t_r4_2_end = Clock::now();
-            t_repair4 += std::chrono::duration_cast<microseconds>(t_r4_2_end - t_r4_2_start).count();
-
-            auto t_acc4_start = Clock::now();
-            solution = acceptance(temp_solution, current_cost,solution, iter, max_iter, binsize,mt, flag4,failiter);
-            auto t_acc4_end = Clock::now();
-            t_accept += std::chrono::duration_cast<microseconds>(t_acc4_end - t_acc4_start).count();
-            failiter+=1;
-            if (bestcost < current_cost) {
-                bestsolution = solution;
-                sortBinsByTotalArea(bestsolution);
-                bestcost=current_cost;
-                failiter=0;
-            }
-        }
-
-
-    }
-    auto t_end = Clock::now();
-    t += std::chrono::duration_cast<microseconds>(t_end - t_start).count();
-    // 循环结束后，输出每个步骤的总耗时（秒）
-//    std::cout << "Time destroy_solution_1: " << t_destroy1 / 1e6 << " s\n";
-//    std::cout << "Time destroy_solution_2: " << t_destroy2 / 1e6 << " s\n";
-//    std::cout << "Time destroy_solution_3: " << t_destroy3 / 1e6 << " s\n";
-//    std::cout << "Time repair_solution3:   " << t_repair3  / 1e6 << " s\n";
-//    std::cout << "Time repair_solution4:   " << t_repair4  / 1e6 << " s\n";
-//    std::cout << "Time acceptance:         " << t_accept   / 1e6 << " s\n";
-//    std::cout << "Time : " << t / 1e6 << " s\n";
-    int binnum=0;
-    bool res=validatePackingBool(bestsolution,parts,binsize,1e-5);
-//    std::cout<<"feasibity="<<res<<std::endl;
-    for(int i=0;i<bestsolution.size();i++)
-
-{
-        if (bestsolution[i].rects.size()>0) binnum+=1;
-}
-    fstream f;
-    f.open("record.txt",ios::out|ios::app);
-    f<<binnum<<std::endl;
-    if (res){
-        std::cout<<binnum<<std::endl;
-    }
-    else{std::cout<<99<<std::endl;}
-
-    f.close();
-//    }
-}
-std::vector<Bin> toBinVector(
-        const std::vector<std::vector<std::vector<double>>>& vvv
-) {
-    std::vector<Bin> bins;
-    bins.reserve(vvv.size());
-
-    for (const auto& bin_vec : vvv) {
-        Bin b;
-        b.rects = toRectVector(bin_vec);  // 复用前面的转换函数
-        bins.push_back(std::move(b));
-    }
-    return bins;
-}
-std::vector<Rect> toRectVector(const std::vector<std::vector<double>>& vvd) {
-    std::vector<Rect> result;
-    result.reserve(vvd.size());
-
-    for (const auto& v : vvd) {
-        if (v.size() < 4) {
-            // 如果不满足 4 个元素，你可以选择：
-            // 1) 跳过
-            // 2) 或者抛异常
-            // 这里先简单跳过
-            continue;
-        }
-        Rect r;
-        r.x = v[0];
-        r.y = v[1];
-        r.w = v[2];
-        r.h = v[3];
-        result.push_back(r);
-    }
-
-    return result;
-}
-std::vector<std::vector<double>> toVecVecDouble(const std::vector<Rect>& rects) {
-    std::vector<std::vector<double>> result;
-    result.reserve(rects.size());  // 预分配，稍微快一点
-
-    for (const auto& r : rects) {
-        // 每个 Rect 转成 [x, y, w, h]
-        result.push_back({ r.x, r.y, r.w, r.h });
-    }
-
-    return result;
-}
-static inline double rectArea(const Rect& r) {
-    return r.w * r.h;
-}
-
-static inline bool insideBin(const Rect& r, const Rect& binSize, double eps) {
-    return (r.x >= -eps) &&
-           (r.y >= -eps) &&
-           (r.w >  eps) &&
-           (r.h >  eps) &&
-           (r.x + r.w <= binSize.w + eps) &&
-           (r.y + r.h <= binSize.h + eps);
-}
-
-static inline bool overlapsPositiveArea(const Rect& a, const Rect& b, double eps) {
-    const double ax2 = a.x + a.w, ay2 = a.y + a.h;
-    const double bx2 = b.x + b.w, by2 = b.y + b.h;
-    const double ox = std::min(ax2, bx2) - std::max(a.x, b.x);
-    const double oy = std::min(ay2, by2) - std::max(a.y, b.y);
-    return (ox > eps) && (oy > eps);
-}
-
-bool validatePackingBool(
-        const std::vector<Bin>& bins,
-        const std::vector<Rect>& inputParts,
-        const Rect& binSize,
-        double eps = 1e-9
-) {
-    // 输入统计
-    const size_t inCnt = inputParts.size();
-    double inArea = 0.0;
-    for (const auto& p : inputParts) {
-        inArea += p.w * p.h;
-    }
-
-    // 输出统计 + 可行性检查
-    size_t outCnt = 0;
-    double outArea = 0.0;
-
-    for (const auto& b : bins) {
-        const auto& rs = b.rects;
-
-        // 边界 + 面积统计
-        for (const auto& r : rs) {
-            if (!insideBin(r, binSize, eps)) return false;
-            ++outCnt;
-            outArea += r.w * r.h;
-        }
-
-        // 重叠检查
-        for (size_t i = 0; i < rs.size(); ++i) {
-            for (size_t j = i + 1; j < rs.size(); ++j) {
-                if (overlapsPositiveArea(rs[i], rs[j], eps)) return false;
-            }
-        }
-    }
-
-    // 个数一致
-    if (outCnt != inCnt) return false;
-
-    // 面积一致（相对容差）
-    const double diff = std::fabs(outArea - inArea);
-    const double scale = std::max(1.0, std::fabs(inArea));
-    if (diff > eps * scale) return false;
-
-    return true;
+    return fit;
 }

@@ -62,7 +62,7 @@ namespace amopt {
                         sol.bins_back.erase(sol.bins_back.begin() + out[i]);
                     }
                 } else if (type == 101) {
-                    int num = max(int(frac * (sol.bins_back.size() + sol.bins_normal.size())), min_num);
+                    int num = max(int(frac * ( sol.bins_normal.size())), min_num);
                     int size = sol.bins_normal.size();
                     vector<int> indexs;
                     vector<int> out;
